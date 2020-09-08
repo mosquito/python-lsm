@@ -1,0 +1,6 @@
+[submodule "src/lz4"]
+	path = src/lz4
+	url = https://github.com/lz4/lz4.git
+[submodule "src/zstd"]
+	path = src/zstd
+	url = https://github.com/facebook/zstd.git

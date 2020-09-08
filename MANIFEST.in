@@ -1,0 +1,2 @@
+include lsm/lsm.pyi
+include README.md
