@@ -1,0 +1,6 @@
+[submodule "cthreadpool/src/threadpool"]
+	path = cthreadpool/src/threadpool
+	url = https://github.com/mbrossard/threadpool.git
+[submodule "src/zstd"]
+	path = src/zstd
+	url = https://github.com/facebook/zstd.git

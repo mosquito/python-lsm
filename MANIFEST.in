@@ -1,0 +1,3 @@
+include cthreadpool/*.pyi
+include cthreadpool/py.typed
+include README.rst
