@@ -1,3 +1,2 @@
-include cthreadpool/*.pyi
-include cthreadpool/py.typed
-include README.rst
+include lsm/lsm.pyi
+include README.md
