@@ -103,6 +103,9 @@ jobs:
 
       - name: Setup python${{ matrix.python }}
         uses: actions/setup-python@v2
+        env:
+          WHEEL_SRC: "."
+          WHEEL_DST: dist
         with:
           python-version: "3.9"
 
