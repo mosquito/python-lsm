@@ -59,6 +59,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v2
+        with:
+            submodules: recursive
 
       - name: Setup python${{ matrix.python }}
         uses: actions/setup-python@v2
