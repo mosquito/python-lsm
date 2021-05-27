@@ -135,7 +135,7 @@ setup(
     extras_require={
         "develop": [
             "pytest",
-            "pytest-cov",
+            "pytest-subtests",
         ],
     },
 )
