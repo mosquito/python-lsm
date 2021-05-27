@@ -45,15 +45,6 @@ jobs:
 
       matrix:
         include:
-          # Ubuntu
-          - python: '3.6'
-            os: ubuntu-latest
-          - python: '3.7'
-            os: ubuntu-latest
-          - python: '3.8'
-            os: ubuntu-latest
-          - python: '3.9'
-            os: ubuntu-latest
           # MacOS
           - python: '3.6'
             os: macos-latest
@@ -100,26 +91,15 @@ jobs:
 
     runs-on: ubuntu-latest
 
-    strategy:
-      fail-fast: false
-
-      matrix:
-        pip:
-          - /opt/python/cp35-cp35m/bin/pip
-          - /opt/python/cp36-cp36m/bin/pip
-          - /opt/python/cp37-cp37m/bin/pip
-          - /opt/python/cp38-cp38/bin/pip
-          - /opt/python/cp39-cp39/bin/pip
-
     steps:
       - uses: actions/checkout@v2
         with:
           submodules: recursive
 
-      - name: Setup python${{ matrix.python }}
+      - name: Building manylinux1 wheels
         uses: docker://quay.io/pypa/manylinux1_x86_64
         with:
-          args: bash -c 'mkdir -p dist && ${{ matrix.pip }} wheel . -f . -w dist'
+          args: scripts/make-wheels.sh
 
       - name: Setup python${{ matrix.python }}
         uses: actions/setup-python@v2
