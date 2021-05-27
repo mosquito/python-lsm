@@ -99,7 +99,7 @@ jobs:
       - name: Building manylinux1 wheels
         uses: docker://quay.io/pypa/manylinux1_x86_64
         with:
-          args: scripts/make-wheels.sh
+          args: /bin/bash scripts/make-wheels.sh
 
       - name: Setup python${{ matrix.python }}
         uses: actions/setup-python@v2
