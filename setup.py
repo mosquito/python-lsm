@@ -17,7 +17,7 @@ if platform.system() in ("Darwin", "Linux"):
     compiller_args += (
         "-g3",
         "-std=c99",
-        "-Os",
+        "-O0",
         "-fpic"
     )
     libraries.append("pthread")
@@ -85,7 +85,7 @@ def library_sources():
 
 setup(
     name=module_name,
-    version="0.1.6",
+    version="0.2.0",
     ext_modules=[
         Extension(
             "lsm",

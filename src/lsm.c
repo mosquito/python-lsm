@@ -212,7 +212,7 @@ static void LSM_dealloc(LSM *self) {
 		LSM_MutexLeave(self);
 	}
 
-	self->lsm_env->xMutexDel(self->lsm_mutex);
+	if (self->lsm_mutex != NULL) self->lsm_env->xMutexDel(self->lsm_mutex);
 
 	self->lsm = NULL;
 	self->lsm_env = NULL;
@@ -993,9 +993,61 @@ static int LSM_set_del_item(LSM* self, PyObject* key, PyObject* value) {
 	LSM_MutexLeave(self);
 	Py_END_ALLOW_THREADS
 
+	if (rc == -1) {
+		PyErr_Format(
+    		PyExc_KeyError,
+    		"Key %R was not found",
+    		key
+    	);
+		return -1;
+	}
+
 	if (pylsm_error(rc)) return -1;
 
 	return 0;
+}
+
+
+static int pylsm_contains(lsm_db* lsm, const char* pKey, int nKey) {
+	int rc;
+	lsm_cursor *cursor;
+
+	if (rc = lsm_csr_open(lsm, &cursor)) return rc;
+	if (rc = lsm_csr_seek(cursor, pKey, nKey, LSM_SEEK_EQ)) {
+		lsm_csr_close(cursor);
+		return rc;
+	}
+
+	if (!lsm_csr_valid(cursor)) { rc = -1; } else { rc = 0; }
+	lsm_csr_close(cursor);
+	return rc;
+}
+
+
+static int LSM_contains(LSM *self, PyObject *key) {
+	if (self->state != PY_LSM_OPENED) {
+		PyErr_SetString(PyExc_RuntimeError, "Database has not opened");
+		return NULL;
+	}
+
+	const char* pKey = NULL;
+	Py_ssize_t nKey = 0;
+
+	if (str_or_bytes_check(self->binary, key, &pKey, &nKey)) return NULL;
+
+	int rc;
+
+	Py_BEGIN_ALLOW_THREADS
+	LSM_MutexLock(self);
+	rc = pylsm_contains(self->lsm, pKey, nKey);
+	LSM_MutexLeave(self);
+	Py_END_ALLOW_THREADS
+
+	if (rc == -1) return 0;
+	if (rc == 0) return 1;
+
+	pylsm_error(rc);
+	return -1;
 }
 
 
@@ -1254,6 +1306,12 @@ static PyMappingMethods LSMTypeMapping = {
 	.mp_ass_subscript = (objobjargproc) LSM_set_del_item
 };
 
+
+static PySequenceMethods LSMTypeSequence = {
+	.sq_contains = (objobjproc) LSM_contains
+};
+
+
 static PyTypeObject LSMType = {
 	PyVarObject_HEAD_INIT(NULL, 0)
 	.tp_name = "LSM",
@@ -1268,7 +1326,8 @@ static PyTypeObject LSMType = {
 	.tp_methods = LSM_methods,
 	.tp_repr = (reprfunc) LSM_repr,
 	.tp_as_mapping = &LSMTypeMapping,
-	.tp_getset = &LSMTypeGetSet
+	.tp_as_sequence = &LSMTypeSequence,
+	.tp_getset = &LSMTypeGetSet,
 };
 
 
