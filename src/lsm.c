@@ -56,14 +56,16 @@ typedef struct {
 
 typedef struct {
 	PyObject_HEAD
-	uint8_t		state;
-	uint32_t    level;
-	LSM* 		db;
-} LSMTransaction;
+	LSM *db;
+	lsm_cursor *cursor;
+} LSMIterView;
 
 
 static PyTypeObject LSMType;
 static PyTypeObject LSMCursorType;
+static PyTypeObject LSMKeysType;
+static PyTypeObject LSMValuesType;
+static PyTypeObject LSMItemsType;
 
 
 static PyObject* LSMCursor_new(PyTypeObject*);
@@ -196,33 +198,6 @@ static uint32_t is_power_of_two(uint32_t n) {
 }
 
 
-static PyObject* LSM_new(PyTypeObject *type, PyObject *args, PyObject *kwds) {
-	LSM *self;
-
-	self = (LSM *) type->tp_alloc(type, 0);
-
-	return (PyObject *) self;
-}
-
-
-static void LSM_dealloc(LSM *self) {
-	if (self->state != PY_LSM_CLOSED && self->lsm != NULL) {
-		LSM_MutexLock(self);
-		lsm_close(self->lsm);
-		LSM_MutexLeave(self);
-	}
-
-	if (self->lsm_mutex != NULL) self->lsm_env->xMutexDel(self->lsm_mutex);
-
-	self->lsm = NULL;
-	self->lsm_env = NULL;
-	self->lsm_mutex = NULL;
-
-	if (self->logger != NULL) Py_DECREF(self->logger);
-	if (self->path != NULL) PyMem_Free(self->path);
-}
-
-
 static void pylsm_logger(LSM* self, int rc, const char * message) {
 	if (self->logger == NULL) return;
 
@@ -251,6 +226,60 @@ static int pylsm_seek_mode_check(int seek_mode) {
 			);
 			return -1;
 	}
+}
+
+
+static PyObject* LSMIterView_new(PyTypeObject *type) {
+	LSMIterView *self;
+	self = (LSMIterView *) type->tp_alloc(type, 0);
+	return (PyObject *) self;
+}
+
+
+static void LSMIterView_dealloc(LSMIterView *self) {
+	if (self->db == NULL) return;
+
+	if (self->cursor != NULL) {
+		LSM_MutexLock(self->db);
+		lsm_csr_close(self->cursor);
+		LSM_MutexLeave(self->db);
+	}
+
+	Py_DECREF(self->db);
+	self->cursor = NULL;
+	self->db = NULL;
+}
+
+
+static int LSMIterView_init(LSMIterView *self, LSM* lsm) {
+	self->db = lsm;
+	Py_INCREF(self->db);
+	return 0;
+}
+
+
+static PyObject* LSM_new(PyTypeObject *type, PyObject *args, PyObject *kwds) {
+	LSM *self;
+	self = (LSM *) type->tp_alloc(type, 0);
+	return (PyObject *) self;
+}
+
+
+static void LSM_dealloc(LSM *self) {
+	if (self->state != PY_LSM_CLOSED && self->lsm != NULL) {
+		LSM_MutexLock(self);
+		lsm_close(self->lsm);
+		LSM_MutexLeave(self);
+	}
+
+	if (self->lsm_mutex != NULL) self->lsm_env->xMutexDel(self->lsm_mutex);
+
+	self->lsm = NULL;
+	self->lsm_env = NULL;
+	self->lsm_mutex = NULL;
+
+	if (self->logger != NULL) Py_DECREF(self->logger);
+	if (self->path != NULL) PyMem_Free(self->path);
 }
 
 
@@ -1148,24 +1177,34 @@ static PyObject* LSM_repr(LSM *self) {
 	);
 }
 
+
+static Py_ssize_t pylsm_csr_length(lsm_cursor* cursor, Py_ssize_t *result) {
+	Py_ssize_t counter = 0;
+	int rc = 0;
+
+	if (rc = lsm_csr_first(cursor)) return rc;
+
+	while (lsm_csr_valid(cursor)) {
+		counter++;
+		if (rc = lsm_csr_next(cursor)) break;
+	}
+
+	*result = counter;
+	return rc;
+}
+
+
 static Py_ssize_t pylsm_length(lsm_db* lsm, Py_ssize_t *result) {
 	Py_ssize_t counter = 0;
 	int rc = 0;
 	lsm_cursor *cursor;
 
 	if (rc = lsm_csr_open(lsm, &cursor)) return rc;
-	if (rc = lsm_csr_first(cursor)) {
-		lsm_csr_close(cursor);
-		return rc;
-	}
-	while (lsm_csr_valid(cursor)) {
-		counter++;
-		if (rc = lsm_csr_next(cursor)) break;
-	}
+	rc = pylsm_csr_length(cursor, result);
 	lsm_csr_close(cursor);
-	*result = counter;
 	return rc;
 }
+
 
 static Py_ssize_t LSM_length(LSM *self) {
 	Py_ssize_t result = 0;
@@ -1173,12 +1212,32 @@ static Py_ssize_t LSM_length(LSM *self) {
 
 	Py_BEGIN_ALLOW_THREADS
 	LSM_MutexLock(self);
+
 	rc = pylsm_length(self->lsm, &result);
 	LSM_MutexLeave(self);
 	Py_END_ALLOW_THREADS
 
 	if (rc) return -1;
 	return result;
+}
+
+
+static LSMIterView* LSM_keys(LSM* self) {
+	LSMIterView* view = (LSMIterView*) LSMIterView_new(&LSMKeysType);
+	if (LSMIterView_init(view, self)) return NULL;
+	return view;
+}
+
+static LSMIterView* LSM_values(LSM* self) {
+	LSMIterView* view = (LSMIterView*) LSMIterView_new(&LSMValuesType);
+	if (LSMIterView_init(view, self)) return NULL;
+	return view;
+}
+
+static LSMIterView* LSM_items(LSM* self) {
+	LSMIterView* view = (LSMIterView*) LSMIterView_new(&LSMItemsType);
+	if (LSMIterView_init(view, self)) return NULL;
+	return view;
 }
 
 
@@ -1374,6 +1433,21 @@ static PyMethodDef LSM_methods[] = {
 		"rollback",
 		(PyCFunction) LSM_rollback, METH_NOARGS,
 		"Rollback transaction"
+	},
+	{
+		"keys",
+		(PyCFunction) LSM_keys, METH_NOARGS,
+		"Returns lsm_keys instance"
+	},
+	{
+		"values",
+		(PyCFunction) LSM_values, METH_NOARGS,
+		"Returns lsm_keys instance"
+	},
+	{
+		"items",
+		(PyCFunction) LSM_items, METH_NOARGS,
+		"Returns lsm_keys instance"
 	},
 	{NULL}  /* Sentinel */
 };
@@ -1666,8 +1740,8 @@ static PyMethodDef LSMCursor_methods[] = {
 	{NULL}  /* Sentinel */
 };
 
-static PyTypeObject
-LSMCursorType = {
+
+static PyTypeObject LSMCursorType = {
 	PyVarObject_HEAD_INIT(NULL, 0)
 	.tp_name = "Cursor",
 	.tp_doc = "",
@@ -1678,6 +1752,198 @@ LSMCursorType = {
 	.tp_members = LSMCursor_members,
 	.tp_methods = LSMCursor_methods,
 	.tp_repr = (reprfunc) LSMCursor_repr
+};
+
+static int LSMIterView_len(LSMIterView* self) {
+	Py_ssize_t result = 0;
+	int rc = 0;
+
+	Py_BEGIN_ALLOW_THREADS
+	LSM_MutexLock(self->db);
+	rc = pylsm_length(self->db->lsm, &result);
+	LSM_MutexLeave(self->db);
+	Py_END_ALLOW_THREADS
+
+	if (rc) return -1;
+	return result;
+}
+
+static LSMIterView* LSMIterView_iter(LSMIterView* self) {
+	LSM_MutexLock(self->db);
+	if (pylsm_error(lsm_csr_open(self->db->lsm, &self->cursor))) {
+		LSM_MutexLeave(self->db);
+	    return NULL;
+	}
+
+	if (pylsm_error(lsm_csr_first(self->cursor))) {
+		LSM_MutexLeave(self->db);
+		return NULL;
+	}
+
+	LSM_MutexLeave(self->db);
+	return self;
+}
+
+
+static PyObject* LSMKeysView_next(LSMIterView *self) {
+	PyObject *result;
+	char *pKey = NULL;
+	ssize_t nKey = 0;
+
+	if (!lsm_csr_valid(self->cursor)) {
+		PyErr_SetNone(PyExc_StopIteration);
+		return NULL;
+	}
+
+	LSM_MutexLock(self->db);
+
+	if (pylsm_error(lsm_csr_key(self->cursor, (const void **) &pKey, &nKey))) {
+		LSM_MutexLeave(self->db);
+		return NULL;
+	}
+
+	if (pylsm_error(lsm_csr_next(self->cursor))) {
+		LSM_MutexLeave(self->db);
+		return NULL;
+	};
+
+	LSM_MutexLeave(self->db);
+
+	if (self->db->binary) {
+		result = PyBytes_FromStringAndSize(pKey, nKey);
+	} else {
+		result = PyUnicode_FromStringAndSize(pKey, nKey);
+	}
+
+	return result;
+}
+
+
+static PyObject* LSMValuesView_next(LSMIterView *self) {
+	PyObject *result;
+	char *pValue = NULL;
+	ssize_t nValue = 0;
+
+	if (!lsm_csr_valid(self->cursor)) {
+		PyErr_SetNone(PyExc_StopIteration);
+		return NULL;
+	}
+
+	LSM_MutexLock(self->db);
+
+	if (pylsm_error(lsm_csr_value(self->cursor, &pValue, &nValue))) {
+		LSM_MutexLeave(self->db);
+		return NULL;
+	}
+
+	if (pylsm_error(lsm_csr_next(self->cursor))) {
+		LSM_MutexLeave(self->db);
+		return NULL;
+	};
+
+	LSM_MutexLeave(self->db);
+
+	if (self->db->binary) {
+		result = PyBytes_FromStringAndSize(pValue, nValue);
+	} else {
+		result = PyUnicode_FromStringAndSize(pValue, nValue);
+	}
+
+	return result;
+}
+
+
+static PyObject* LSMItemsView_next(LSMIterView *self) {
+	char *pKey = NULL;
+	ssize_t nKey = 0;
+
+	char *pValue = NULL;
+	ssize_t nValue = 0;
+
+	if (!lsm_csr_valid(self->cursor)) {
+		PyErr_SetNone(PyExc_StopIteration);
+		return NULL;
+	}
+
+	LSM_MutexLock(self->db);
+
+	if (pylsm_error(lsm_csr_key(self->cursor, &pKey, &nKey))) {
+		LSM_MutexLeave(self->db);
+		return NULL;
+	}
+
+	if (pylsm_error(lsm_csr_value(self->cursor, &pValue, &nValue))) {
+		LSM_MutexLeave(self->db);
+		return NULL;
+	}
+
+	if (pylsm_error(lsm_csr_next(self->cursor))) {
+		LSM_MutexLeave(self->db);
+		return NULL;
+	};
+
+	LSM_MutexLeave(self->db);
+
+	PyObject *result;
+	PyObject *key;
+	PyObject *value;
+
+	if (self->db->binary) {
+		key = PyBytes_FromStringAndSize(pKey, nKey);
+	} else {
+		key = PyUnicode_FromStringAndSize(pKey, nKey);
+	}
+
+	if (self->db->binary) {
+		value = PyBytes_FromStringAndSize(pValue, nValue);
+	} else {
+		value = PyUnicode_FromStringAndSize(pValue, nValue);
+	}
+
+	return PyTuple_Pack(2, key, value);
+}
+
+
+static PySequenceMethods LSMIterView_sequence = {
+	.sq_length = (lenfunc) LSMIterView_len
+};
+
+static PyTypeObject LSMKeysType = {
+	PyVarObject_HEAD_INIT(NULL, 0)
+	.tp_name = "lsm_keys",
+	.tp_basicsize = sizeof(LSMIterView),
+	.tp_itemsize = 0,
+	.tp_flags = Py_TPFLAGS_DEFAULT,
+	.tp_dealloc = (destructor) LSMIterView_dealloc,
+	.tp_iter = (getiterfunc) LSMIterView_iter,
+	.tp_iternext = (iternextfunc) LSMKeysView_next,
+	.tp_as_sequence = &LSMIterView_sequence
+};
+
+
+static PyTypeObject LSMItemsType = {
+	PyVarObject_HEAD_INIT(NULL, 0)
+	.tp_name = "lsm_items",
+	.tp_basicsize = sizeof(LSMIterView),
+	.tp_itemsize = 0,
+	.tp_flags = Py_TPFLAGS_DEFAULT,
+	.tp_dealloc = (destructor) LSMIterView_dealloc,
+	.tp_iter = (getiterfunc) LSMIterView_iter,
+	.tp_iternext = (iternextfunc) LSMItemsView_next,
+	.tp_as_sequence = &LSMIterView_sequence
+};
+
+
+static PyTypeObject LSMValuesType = {
+	PyVarObject_HEAD_INIT(NULL, 0)
+	.tp_name = "lsm_values",
+	.tp_basicsize = sizeof(LSMIterView),
+	.tp_itemsize = 0,
+	.tp_flags = Py_TPFLAGS_DEFAULT,
+	.tp_dealloc = (destructor) LSMIterView_dealloc,
+	.tp_iter = (getiterfunc) LSMIterView_iter,
+	.tp_iternext = (iternextfunc) LSMValuesView_next,
+	.tp_as_sequence = &LSMIterView_sequence
 };
 
 
@@ -1713,6 +1979,15 @@ PyMODINIT_FUNC PyInit_lsm(void) {
 		Py_XDECREF(m);
 		return NULL;
 	}
+
+	if (PyType_Ready(&LSMItemsType) < 0) return NULL;
+	Py_INCREF(&LSMItemsType);
+
+	if (PyType_Ready(&LSMValuesType) < 0) return NULL;
+	Py_INCREF(&LSMValuesType);
+
+	if (PyType_Ready(&LSMKeysType) < 0) return NULL;
+	Py_INCREF(&LSMKeysType);
 
 	PyModule_AddIntConstant(m, "SAFETY_OFF", LSM_SAFETY_OFF);
 	PyModule_AddIntConstant(m, "SAFETY_NORMAL", LSM_SAFETY_NORMAL);
