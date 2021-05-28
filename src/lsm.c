@@ -233,6 +233,27 @@ static void pylsm_logger(LSM* self, int rc, const char * message) {
 }
 
 
+static int pylsm_seek_mode_check(int seek_mode) {
+	switch (seek_mode) {
+		case LSM_SEEK_EQ:
+			return 0;
+		case LSM_SEEK_LE:
+			return 0;
+		case LSM_SEEK_GE:
+			return 0;
+		case LSM_SEEK_LEFAST:
+			return 0;
+		default:
+			PyErr_Format(
+				PyExc_ValueError,
+				"\"seek_mode\" should be one of SEEK_LEFAST (%d), SEEK_LE (%d), SEEK_EQ(%d) or SEEK_GE (%d) not %d",
+				LSM_SEEK_LEFAST, LSM_SEEK_LE, LSM_SEEK_EQ, LSM_SEEK_GE, seek_mode
+			);
+			return -1;
+	}
+}
+
+
 static int LSM_init(LSM *self, PyObject *args, PyObject *kwds) {
 	self->autocheckpoint = 2048;
 	self->autoflush = 1024;
@@ -864,7 +885,8 @@ static int pylsm_getitem(
 	const char * pKey,
 	int nKey,
 	char** ppVal,
-	int* pnVal
+	int* pnVal,
+	int seek_mode
 ) {
 	int rc;
 	lsm_cursor *cursor;
@@ -873,7 +895,7 @@ static int pylsm_getitem(
 	char* result = NULL;
 
 	if (rc = lsm_csr_open(lsm, &cursor)) return rc;
-	if (rc = lsm_csr_seek(cursor, pKey, nKey, LSM_SEEK_EQ)) {
+	if (rc = lsm_csr_seek(cursor, pKey, nKey, seek_mode)) {
 		lsm_csr_close(cursor);
 		return rc;
 	}
@@ -896,14 +918,45 @@ static int pylsm_getitem(
 }
 
 
-static PyObject* LSM_getitem(LSM *self, PyObject *key) {
+static PyObject* LSM_getitem(LSM *self, PyObject *arg) {
 	if (self->state != PY_LSM_OPENED) {
 		PyErr_SetString(PyExc_RuntimeError, "Database has not opened");
 		return NULL;
 	}
 
+	PyObject* key = arg;
 	const char* pKey = NULL;
 	Py_ssize_t nKey = 0;
+	ssize_t tuple_size;
+	int seek_mode = LSM_SEEK_EQ;
+
+	if (PyTuple_Check(arg)) {
+		tuple_size = PyTuple_GET_SIZE(arg);
+		if (tuple_size != 2) {
+			PyErr_Format(
+				PyExc_ValueError,
+				"tuple argument must be pair of key and seek_mode passed tuple has size %d",
+				tuple_size
+			);
+			return NULL;
+		}
+
+		key = PyTuple_GetItem(arg, 0);
+		PyObject* seek_mode_obj = PyTuple_GetItem(arg, 1);
+
+		if (!PyLong_Check(seek_mode_obj)) {
+			PyErr_Format(
+				PyExc_ValueError,
+				"second tuple argument must be int not %R",
+				PyObject_Type(seek_mode_obj)
+			);
+			return NULL;
+		}
+
+		seek_mode = PyLong_AsLong(seek_mode_obj);
+	}
+
+	if (pylsm_seek_mode_check(seek_mode)) return NULL;
 
 	if (str_or_bytes_check(self->binary, key, &pKey, &nKey)) return NULL;
 
@@ -919,7 +972,8 @@ static PyObject* LSM_getitem(LSM *self, PyObject *key) {
 		pKey,
 		nKey,
 		&value_buff,
-		&value_len
+		&value_len,
+		seek_mode
 	);
 
 	LSM_MutexLeave(self);
@@ -1427,24 +1481,7 @@ static PyObject* LSMCursor_seek(LSMCursor *self, PyObject* args, PyObject* kwds)
 	Py_ssize_t nKey = 0;
 
 	if (!PyArg_ParseTupleAndKeywords(args, kwds, "O|I", kwlist, &key, &mode)) return NULL;
-
-	switch (mode) {
-		case LSM_SEEK_EQ:
-			break;
-		case LSM_SEEK_LE:
-			break;
-		case LSM_SEEK_GE:
-			break;
-		case LSM_SEEK_LEFAST:
-			break;
-		default:
-			PyErr_Format(
-				PyExc_ValueError,
-				"\"seek_mode\" should be SEEK_LEFAST (%d), SEEK_LE (%d), SEEK_EQ(%d) or SEEK_GE (%d)",
-				LSM_SEEK_LEFAST, LSM_SEEK_LE, LSM_SEEK_EQ, LSM_SEEK_GE
-			);
-			return NULL;
-	}
+	if (pylsm_seek_mode_check(mode)) return NULL;
 
 	int rc;
 

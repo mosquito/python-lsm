@@ -94,7 +94,7 @@ b'bar'
 bar
 ```
 
-
+Database apply changes as soon as possible:
 
 ```python
 >>> from lsm import LSM
@@ -121,7 +121,10 @@ are searching for does not exist:
 
 ```python
 
->>> from lsm import SEEK_LE, SEEK_GE
+>>> from lsm import, LSM, SEEK_LE, SEEK_GE
+>>> db = LSM("/tmp/test.ldb", binary=False)
+>>> db.open()
+True
 >>> db['k1xx', SEEK_LE]  # Here we will match "k1".
 '1'
 >>> db['k1xx', SEEK_GE]  # Here we will match "k2".
