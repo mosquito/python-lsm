@@ -1148,6 +1148,39 @@ static PyObject* LSM_repr(LSM *self) {
 	);
 }
 
+static Py_ssize_t pylsm_length(lsm_db* lsm, Py_ssize_t *result) {
+	Py_ssize_t counter = 0;
+	int rc = 0;
+	lsm_cursor *cursor;
+
+	if (rc = lsm_csr_open(lsm, &cursor)) return rc;
+	if (rc = lsm_csr_first(cursor)) {
+		lsm_csr_close(cursor);
+		return rc;
+	}
+	while (lsm_csr_valid(cursor)) {
+		counter++;
+		if (rc = lsm_csr_next(cursor)) break;
+	}
+	lsm_csr_close(cursor);
+	*result = counter;
+	return rc;
+}
+
+static Py_ssize_t LSM_length(LSM *self) {
+	Py_ssize_t result = 0;
+	int rc = 0;
+
+	Py_BEGIN_ALLOW_THREADS
+	LSM_MutexLock(self);
+	rc = pylsm_length(self->lsm, &result);
+	LSM_MutexLeave(self);
+	Py_END_ALLOW_THREADS
+
+	if (rc) return -1;
+	return result;
+}
+
 
 static PyMemberDef LSM_members[] = {
 	{
@@ -1357,7 +1390,8 @@ static PyGetSetDef LSMTypeGetSet[] = {
 
 static PyMappingMethods LSMTypeMapping = {
 	.mp_subscript = (binaryfunc) LSM_getitem,
-	.mp_ass_subscript = (objobjargproc) LSM_set_del_item
+	.mp_ass_subscript = (objobjargproc) LSM_set_del_item,
+	.mp_length = (lenfunc) LSM_length
 };
 
 
