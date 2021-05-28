@@ -334,6 +334,21 @@ static int pylsm_contains(lsm_db* lsm, const char* pKey, int nKey) {
 }
 
 
+static int pylsm_ensure_opened(LSM* self) {
+	if (self->state == PY_LSM_OPENED) return 0;
+
+	PyErr_SetString(PyExc_RuntimeError, "Database has not opened");
+	return -1;
+}
+
+static int pylsm_ensure_csr_opened(LSMCursor* self) {
+	if (self->state == PY_LSM_OPENED) return 0;
+	if (pylsm_ensure_opened(self->db)) return 0;
+	PyErr_SetString(PyExc_RuntimeError, "Cursor closed");
+	return -1;
+}
+
+
 static PyObject* LSMIterView_new(PyTypeObject *type) {
 	LSMIterView *self;
 	self = (LSMIterView *) type->tp_alloc(type, 0);
@@ -357,6 +372,8 @@ static void LSMIterView_dealloc(LSMIterView *self) {
 
 
 static int LSMIterView_init(LSMIterView *self, LSM* lsm) {
+	if (pylsm_ensure_opened(lsm)) return -1;
+
 	self->db = lsm;
 	Py_INCREF(self->db);
 	return 0;
@@ -364,6 +381,8 @@ static int LSMIterView_init(LSMIterView *self, LSM* lsm) {
 
 
 static int LSMIterView_len(LSMIterView* self) {
+	if (pylsm_ensure_opened(self->db)) return -1;
+
 	Py_ssize_t result = 0;
 	int rc = 0;
 
@@ -378,6 +397,8 @@ static int LSMIterView_len(LSMIterView* self) {
 }
 
 static LSMIterView* LSMIterView_iter(LSMIterView* self) {
+	if (pylsm_ensure_opened(self->db)) return NULL;
+
 	LSM_MutexLock(self->db);
 	if (pylsm_error(lsm_csr_open(self->db->lsm, &self->cursor))) {
 		LSM_MutexLeave(self->db);
@@ -395,6 +416,8 @@ static LSMIterView* LSMIterView_iter(LSMIterView* self) {
 
 
 static PyObject* LSMKeysView_next(LSMIterView *self) {
+	if (pylsm_ensure_opened(self->db)) return NULL;
+
 	PyObject *result;
 	char *pKey = NULL;
 	ssize_t nKey = 0;
@@ -429,6 +452,8 @@ static PyObject* LSMKeysView_next(LSMIterView *self) {
 
 
 static PyObject* LSMValuesView_next(LSMIterView *self) {
+	if (pylsm_ensure_opened(self->db)) return NULL;
+
 	PyObject *result;
 	char *pValue = NULL;
 	ssize_t nValue = 0;
@@ -463,6 +488,8 @@ static PyObject* LSMValuesView_next(LSMIterView *self) {
 
 
 static PyObject* LSMItemsView_next(LSMIterView *self) {
+	if (pylsm_ensure_opened(self->db)) return NULL;
+
 	char *pKey = NULL;
 	ssize_t nKey = 0;
 
@@ -878,10 +905,7 @@ static PyObject* LSM_close(LSM *self) {
 
 
 static PyObject* LSM_info(LSM *self) {
-	if (self->state != PY_LSM_OPENED) {
-		PyErr_SetString(PyExc_RuntimeError, "Database has not opened");
-		return NULL;
-	}
+	if (pylsm_ensure_opened(self)) return NULL;
 
 	int32_t nwrite; int nwrite_result;
 	int32_t nread; int nread_result;
@@ -943,10 +967,7 @@ static PyObject* LSM_ctx_exit(LSM *self) {
 
 
 static PyObject* LSM_work(LSM *self, PyObject *args, PyObject *kwds) {
-	if (self->state != PY_LSM_OPENED) {
-		PyErr_SetString(PyExc_RuntimeError, "Database not opened");
-		return NULL;
-	}
+	if (pylsm_ensure_opened(self)) return NULL;
 
 	static char *kwlist[] = {"nmerge", "nkb", "complete", NULL};
 
@@ -980,10 +1001,7 @@ static PyObject* LSM_work(LSM *self, PyObject *args, PyObject *kwds) {
 
 
 static PyObject* LSM_flush(LSM *self) {
-	if (self->state != PY_LSM_OPENED) {
-		PyErr_SetString(PyExc_RuntimeError, "Database has not opened");
-		return NULL;
-	}
+	if (pylsm_ensure_opened(self)) return NULL;
 
 	int rc;
 
@@ -998,10 +1016,7 @@ static PyObject* LSM_flush(LSM *self) {
 }
 
 static PyObject* LSM_checkpoint(LSM *self) {
-	if (self->state != PY_LSM_OPENED) {
-		PyErr_SetString(PyExc_RuntimeError, "Database has not opened");
-		return NULL;
-	}
+	if (pylsm_ensure_opened(self)) return NULL;
 
 	int result;
 	int bytes_written = 0;
@@ -1017,10 +1032,7 @@ static PyObject* LSM_checkpoint(LSM *self) {
 }
 
 static PyObject* LSM_cursor(LSM *self, PyObject *args, PyObject *kwds) {
-	if (self->state != PY_LSM_OPENED) {
-		PyErr_SetString(PyExc_RuntimeError, "Database has not opened");
-		return NULL;
-	}
+	if (pylsm_ensure_opened(self)) return NULL;
 
 	LSMCursor* cursor = (LSMCursor*) LSMCursor_new(&LSMCursorType);
 	cursor->db = self;
@@ -1071,10 +1083,7 @@ static int str_or_bytes_check(char binary, PyObject* pObj, const char** ppBuff, 
 
 
 static PyObject* LSM_insert(LSM *self, PyObject *args, PyObject *kwds) {
-	if (self->state != PY_LSM_OPENED) {
-		PyErr_SetString(PyExc_RuntimeError, "Database has not opened");
-		return NULL;
-	}
+	if (pylsm_ensure_opened(self)) return NULL;
 
 	static char *kwlist[] = {"key", "value", NULL};
 
@@ -1106,10 +1115,7 @@ static PyObject* LSM_insert(LSM *self, PyObject *args, PyObject *kwds) {
 
 
 static PyObject* LSM_delete(LSM *self, PyObject *args, PyObject *kwds) {
-	if (self->state != PY_LSM_OPENED) {
-		PyErr_SetString(PyExc_RuntimeError, "Database has not opened");
-		return NULL;
-	}
+	if (pylsm_ensure_opened(self)) return NULL;
 
 	static char *kwlist[] = {"key", NULL};
 
@@ -1133,10 +1139,7 @@ static PyObject* LSM_delete(LSM *self, PyObject *args, PyObject *kwds) {
 
 
 static PyObject* LSM_delete_range(LSM *self, PyObject *args, PyObject *kwds) {
-	if (self->state != PY_LSM_OPENED) {
-		PyErr_SetString(PyExc_RuntimeError, "Database has not opened");
-		return NULL;
-	}
+	if (pylsm_ensure_opened(self)) return NULL;
 
 	static char *kwlist[] = {"start", "end", NULL};
 
@@ -1166,10 +1169,7 @@ static PyObject* LSM_delete_range(LSM *self, PyObject *args, PyObject *kwds) {
 
 
 static PyObject* LSM_begin(LSM *self) {
-	if (self->state != PY_LSM_OPENED) {
-		PyErr_SetString(PyExc_RuntimeError, "Database has not opened");
-		return NULL;
-	}
+	if (pylsm_ensure_opened(self)) return NULL;
 
 	int level = self->tx_level + 1;
 
@@ -1187,10 +1187,7 @@ static PyObject* LSM_begin(LSM *self) {
 
 
 static PyObject* LSM_commit(LSM *self) {
-	if (self->state != PY_LSM_OPENED) {
-		PyErr_SetString(PyExc_RuntimeError, "Database has not opened");
-		return NULL;
-	}
+	if (pylsm_ensure_opened(self)) return NULL;
 
 	self->tx_level--;
 
@@ -1208,10 +1205,7 @@ static PyObject* LSM_commit(LSM *self) {
 
 
 static PyObject* LSM_getitem(LSM *self, PyObject *arg) {
-	if (self->state != PY_LSM_OPENED) {
-		PyErr_SetString(PyExc_RuntimeError, "Database has not opened");
-		return NULL;
-	}
+	if (pylsm_ensure_opened(self)) return NULL;
 
 	PyObject* key = arg;
 	const char* pKey = NULL;
@@ -1293,6 +1287,8 @@ static PyObject* LSM_getitem(LSM *self, PyObject *arg) {
 
 
 static int LSM_set_del_item(LSM* self, PyObject* key, PyObject* value) {
+	if (pylsm_ensure_opened(self)) return NULL;
+
 	int rc;
 	const char* pKey = NULL;
 	Py_ssize_t nKey = 0;
@@ -1329,10 +1325,7 @@ static int LSM_set_del_item(LSM* self, PyObject* key, PyObject* value) {
 
 
 static int LSM_contains(LSM *self, PyObject *key) {
-	if (self->state != PY_LSM_OPENED) {
-		PyErr_SetString(PyExc_RuntimeError, "Database has not opened");
-		return NULL;
-	}
+	if (pylsm_ensure_opened(self)) return NULL;
 
 	const char* pKey = NULL;
 	Py_ssize_t nKey = 0;
@@ -1356,10 +1349,7 @@ static int LSM_contains(LSM *self, PyObject *key) {
 
 
 static PyObject* LSM_rollback(LSM *self) {
-	if (self->state != PY_LSM_OPENED) {
-		PyErr_SetString(PyExc_RuntimeError, "Database has not opened");
-		return NULL;
-	}
+	if (pylsm_ensure_opened(self)) return NULL;
 
 	int result;
 	Py_BEGIN_ALLOW_THREADS
@@ -1416,29 +1406,50 @@ static Py_ssize_t LSM_length(LSM *self) {
 
 
 static LSMIterView* LSM_keys(LSM* self) {
+	if (pylsm_ensure_opened(self)) return NULL;
+
 	LSMIterView* view = (LSMIterView*) LSMIterView_new(&LSMKeysType);
 	if (LSMIterView_init(view, self)) return NULL;
 	return view;
 }
 
 static LSMIterView* LSM_values(LSM* self) {
+	if (pylsm_ensure_opened(self)) return NULL;
+
 	LSMIterView* view = (LSMIterView*) LSMIterView_new(&LSMValuesType);
 	if (LSMIterView_init(view, self)) return NULL;
 	return view;
 }
 
 static LSMIterView* LSM_items(LSM* self) {
+	if (pylsm_ensure_opened(self)) return NULL;
+
 	LSMIterView* view = (LSMIterView*) LSMIterView_new(&LSMItemsType);
 	if (LSMIterView_init(view, self)) return NULL;
 	return view;
 }
 
 static LSMIterView* LSM_iter(LSM* self) {
+	if (pylsm_ensure_opened(self)) return NULL;
+
 	LSMIterView* view = (LSMIterView*) LSMIterView_new(&LSMKeysType);
 	if (LSMIterView_init(view, self)) return NULL;
 	return LSMIterView_iter(view);
 }
 
+static PyObject* LSM_update(LSM* self, PyObject *args, PyObject *kwds) {
+	if (pylsm_ensure_opened(self)) return NULL;
+
+	static char *kwlist[] = {"key", NULL};
+
+	PyObject * key = NULL;
+	const char* pKey = NULL;
+	Py_ssize_t nKey = 0;
+
+	if (!PyArg_ParseTupleAndKeywords(args, kwds, "O", kwlist, &key)) return NULL;
+
+	///// TODO:
+}
 
 static PyMemberDef LSM_members[] = {
 	{
@@ -1718,11 +1729,7 @@ static void LSMCursor_dealloc(LSMCursor *self) {
 
 
 static PyObject* LSMCursor_first(LSMCursor *self) {
-	if (self->state != PY_LSM_OPENED) {
-		PyErr_SetString(PyExc_RuntimeError, "Database has not opened");
-		return NULL;
-	}
-
+	if (pylsm_ensure_csr_opened(self)) return NULL;
 	int result;
 	Py_BEGIN_ALLOW_THREADS
 	LSM_MutexLock(self->db);
@@ -1737,11 +1744,7 @@ static PyObject* LSMCursor_first(LSMCursor *self) {
 
 
 static PyObject* LSMCursor_last(LSMCursor *self) {
-	if (self->state != PY_LSM_OPENED) {
-		PyErr_SetString(PyExc_RuntimeError, "Database has not opened");
-		return NULL;
-	}
-
+	if (pylsm_ensure_csr_opened(self)) return NULL;
 	int result;
 	Py_BEGIN_ALLOW_THREADS
 	LSM_MutexLock(self->db);
@@ -1756,11 +1759,7 @@ static PyObject* LSMCursor_last(LSMCursor *self) {
 
 
 static PyObject* LSMCursor_close(LSMCursor *self) {
-	if (self->state == PY_LSM_CLOSED) {
-		PyErr_SetString(PyExc_RuntimeError, "Cursor already closed");
-		return NULL;
-	}
-
+	if (pylsm_ensure_csr_opened(self)) return NULL;
 	int result;
 	result = lsm_csr_close(self->cursor);
 
@@ -1775,11 +1774,7 @@ static PyObject* LSMCursor_close(LSMCursor *self) {
 }
 
 static PyObject* LSMCursor_seek(LSMCursor *self, PyObject* args, PyObject* kwds) {
-	if (self->state != PY_LSM_OPENED) {
-		PyErr_SetString(PyExc_RuntimeError, "Database has not opened");
-		return NULL;
-	}
-
+	if (pylsm_ensure_csr_opened(self)) return NULL;
 	static char *kwlist[] = {"key", "seek_mode", NULL};
 
 	int mode = LSM_SEEK_EQ;
@@ -1806,11 +1801,7 @@ static PyObject* LSMCursor_seek(LSMCursor *self, PyObject* args, PyObject* kwds)
 
 
 static PyObject* LSMCursor_compare(LSMCursor *self, PyObject* args, PyObject* kwds) {
-	if (self->state != PY_LSM_OPENED) {
-		PyErr_SetString(PyExc_RuntimeError, "Database has not opened");
-		return NULL;
-	}
-
+	if (pylsm_ensure_csr_opened(self)) return NULL;
 	static char *kwlist[] = {"key", NULL};
 
 	PyObject * key = NULL;
@@ -1832,11 +1823,7 @@ static PyObject* LSMCursor_compare(LSMCursor *self, PyObject* args, PyObject* kw
 }
 
 static PyObject* LSMCursor_retrieve(LSMCursor *self) {
-	if (self->state != PY_LSM_OPENED) {
-		PyErr_SetString(PyExc_RuntimeError, "Database has not opened");
-		return NULL;
-	}
-
+	if (pylsm_ensure_csr_opened(self)) return NULL;
 	if(!lsm_csr_valid(self->cursor)) { Py_RETURN_NONE; }
 
 	char* key_buff = NULL;
@@ -1864,6 +1851,7 @@ static PyObject* LSMCursor_retrieve(LSMCursor *self) {
 
 
 static PyObject* LSMCursor_ctx_enter(LSMCursor *self) {
+	if (pylsm_ensure_csr_opened(self)) return NULL;
 	return (PyObject*) self;
 }
 
