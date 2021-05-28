@@ -1437,18 +1437,112 @@ static LSMIterView* LSM_iter(LSM* self) {
 	return LSMIterView_iter(view);
 }
 
-static PyObject* LSM_update(LSM* self, PyObject *args, PyObject *kwds) {
+static PyObject* LSM_update(LSM* self, PyObject *args) {
 	if (pylsm_ensure_opened(self)) return NULL;
 
-	static char *kwlist[] = {"key", NULL};
+	PyObject * value = NULL;
+	if (!PyArg_ParseTuple(args, "O", &value)) return NULL;
+	if (!PyMapping_Check(value)) {
+		PyErr_Format(
+			PyExc_ValueError,
+			"Mapping expected not %R",
+			PyObject_Type(value)
+		);
+		return NULL;
+	}
 
-	PyObject * key = NULL;
-	const char* pKey = NULL;
-	Py_ssize_t nKey = 0;
+	PyObject* items = PyMapping_Items(value);
 
-	if (!PyArg_ParseTupleAndKeywords(args, kwds, "O", kwlist, &key)) return NULL;
+	if (!PyList_Check(items)) {
+		PyErr_Format(
+			PyExc_ValueError,
+			"Iterable expected not %R",
+			PyObject_Type(items)
+		);
+		return NULL;
+	}
 
-	///// TODO:
+	int mapping_size = PyMapping_Length(value);
+
+	PyObject **objects = PyMem_Calloc(mapping_size * 2, sizeof(PyObject*));
+	char **keys = PyMem_Calloc(mapping_size, sizeof(char*));
+	char **values = PyMem_Calloc(mapping_size, sizeof(char*));
+	int *key_sizes = PyMem_Calloc(mapping_size, sizeof(int*));
+	int *value_sizes = PyMem_Calloc(mapping_size, sizeof(int*));
+
+	PyObject *item;
+	size_t count = 0;
+	PyObject *iterator = PyObject_GetIter(items);
+
+	PyObject* obj;
+
+	unsigned short is_ok = 1;
+
+	while ((item = PyIter_Next(iterator))) {
+		if (PyTuple_Size(item) != 2) {
+			Py_DECREF(item);
+			PyErr_Format(
+				PyExc_ValueError,
+				"Mapping items must be tuple with pair not %R",
+				item
+			);
+			is_ok = 0;
+			break;
+		}
+
+		obj = PyTuple_GET_ITEM(item, 0);
+		if (str_or_bytes_check(self->binary, obj, &keys[count], &key_sizes[count])) {
+			Py_DECREF(item);
+			is_ok = 0;
+			break;
+		}
+
+		objects[count * 2] = obj;
+		Py_INCREF(obj);
+
+		obj = PyTuple_GET_ITEM(item, 1);
+		if (str_or_bytes_check(self->binary, obj, &values[count], &value_sizes[count])) {
+			Py_DECREF(item);
+			is_ok = 0;
+			break;
+		}
+
+		objects[(count * 2) + 1] = obj;
+		Py_INCREF(value);
+
+		Py_DECREF(item);
+		count++;
+    }
+
+    int rc;
+
+	if (is_ok) {
+		Py_BEGIN_ALLOW_THREADS
+		LSM_MutexLock(self);
+		for (size_t i=0; i < mapping_size; i++) {
+			if (rc = lsm_insert(self->lsm, keys[i], key_sizes[i], values[i], value_sizes[i])) break;
+		}
+		LSM_MutexLeave(self);
+		Py_END_ALLOW_THREADS
+
+		if (pylsm_error(rc)) is_ok = 0;
+	}
+
+	for (size_t i = 0; i < mapping_size && objects[i] != NULL; i++) {
+		Py_DECREF(objects[i]);
+	}
+
+	PyMem_Free(key_sizes);
+	PyMem_Free(value_sizes);
+	PyMem_Free(keys);
+	PyMem_Free(values);
+	PyMem_Free(objects);
+
+	if (is_ok) {
+		Py_RETURN_NONE;
+	} else {
+		return NULL;
+	}
 }
 
 static PyMemberDef LSM_members[] = {
@@ -1658,6 +1752,12 @@ static PyMethodDef LSM_methods[] = {
 		"items",
 		(PyCFunction) LSM_items, METH_NOARGS,
 		"Returns lsm_keys instance"
+	},
+	{
+		"update",
+		(PyCFunction) LSM_update, METH_VARARGS,
+		"dict-like update method"
+
 	},
 	{NULL}  /* Sentinel */
 };
