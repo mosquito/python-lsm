@@ -135,6 +135,7 @@ True
 
 * `keys()`
 * `values()`
+* `items()`
 * `update()`
 
 ### Slices and Iteration
@@ -146,7 +147,7 @@ documentation).
 
 ```python
 
->>> [item for item in db]
+>>> [item for item in db.items()]
 [('foo', 'bar'), ('k0', '0'), ('k1', '1'), ('k2', '2')]
 
 >>> db['k0':'k99']

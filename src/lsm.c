@@ -61,6 +61,28 @@ typedef struct {
 } LSMIterView;
 
 
+typedef struct {
+	PyObject_HEAD
+	LSM *db;
+	lsm_cursor *cursor;
+
+	PyObject *start;
+	char* pStart;
+	int nStart;
+
+	PyObject *stop;
+	char* pStop;
+	int nStop;
+
+	int state;
+
+	long step;
+	char direction;
+
+	ssize_t counter;
+} LSMSliceView;
+
+
 static PyTypeObject LSMType;
 static PyTypeObject LSMCursorType;
 static PyTypeObject LSMKeysType;
@@ -75,6 +97,11 @@ enum {
 	PY_LSM_INITIALIZED = 0,
 	PY_LSM_OPENED = 1,
 	PY_LSM_CLOSED = 2
+};
+
+enum {
+	PY_LSM_SLICE_FORWARD = 0,
+	PY_LSM_SLICE_BACKWARD = 1
 };
 
 enum {
@@ -349,6 +376,79 @@ static int pylsm_ensure_csr_opened(LSMCursor* self) {
 }
 
 
+int pylsm_slice_first(LSMSliceView* self) {
+	int rc;
+	int cmp_res;
+
+	if (self->pStop != NULL) {
+		if (rc = lsm_csr_cmp(self->cursor, self->pStop, self->nStop, &cmp_res)) return rc;
+		if (cmp_res == 0) return -1;
+	}
+
+	if (!lsm_csr_valid(self->cursor)) return -1;
+
+	self->counter++;
+	return 0;
+}
+
+
+int pylsm_slice_next(LSMSliceView* self) {
+	int rc;
+	int cmp_res = -65535;
+
+	while (lsm_csr_valid(self->cursor)) {
+		switch (self->direction) {
+			case PY_LSM_SLICE_FORWARD:
+				if (rc = lsm_csr_next(self->cursor)) return rc;
+				break;
+			case PY_LSM_SLICE_BACKWARD:
+				if (rc = lsm_csr_prev(self->cursor)) return rc;
+				break;
+		}
+
+		if (self->pStop != NULL) {
+			if (rc = lsm_csr_cmp(self->cursor, self->pStop, self->nStop, &cmp_res)) return rc;
+			if (cmp_res == 0) return -1;
+		}
+
+		self->counter++;
+		// FIXME: Wrong step computing
+		if ((self->counter % self->step) == 0) return 0;
+	}
+
+	return -1;
+}
+
+
+static int str_or_bytes_check(char binary, PyObject* pObj, const char** ppBuff, ssize_t* nBuf) {
+	const char * buff = NULL;
+	ssize_t buff_len = 0;
+
+	if (binary) {
+		if (PyBytes_Check(pObj)) {
+			buff_len = PyBytes_GET_SIZE(pObj);
+			buff = PyBytes_AS_STRING(pObj);
+		} else {
+			PyErr_Format(PyExc_ValueError, "bytes expected not %R", PyObject_Type(pObj));
+			return -1;
+		}
+	} else {
+		if (PyUnicode_Check(pObj)) {
+			buff = PyUnicode_AsUTF8AndSize(pObj, &buff_len);
+			if (buff == NULL) return -1;
+		} else {
+			PyErr_Format(PyExc_ValueError, "str expected not %R", PyObject_Type(pObj));
+			return -1;
+		}
+	}
+
+	*ppBuff = buff;
+	*nBuf = buff_len;
+
+	return 0;
+}
+
+
 static PyObject* LSMIterView_new(PyTypeObject *type) {
 	LSMIterView *self;
 	self = (LSMIterView *) type->tp_alloc(type, 0);
@@ -540,8 +640,27 @@ static PyObject* LSMItemsView_next(LSMIterView *self) {
 }
 
 
+static int LSM_contains(LSM *self, PyObject *key);
+
+static int LSMKeysView_contains(LSMIterView* self, PyObject* key) {
+	return LSM_contains(self->db, key);
+}
+
+static PySequenceMethods LSMKeysView_sequence = {
+	.sq_length = (lenfunc) LSMIterView_len,
+	.sq_contains = (objobjproc) LSMKeysView_contains
+};
+
+
+static int LSMIterView_contains(LSMIterView* self, PyObject* key) {
+	PyErr_SetNone(PyExc_NotImplementedError);
+	return NULL;
+}
+
+
 static PySequenceMethods LSMIterView_sequence = {
-	.sq_length = (lenfunc) LSMIterView_len
+	.sq_length = (lenfunc) LSMIterView_len,
+	.sq_contains = (objobjproc) LSMIterView_contains
 };
 
 static PyTypeObject LSMKeysType = {
@@ -553,7 +672,7 @@ static PyTypeObject LSMKeysType = {
 	.tp_dealloc = (destructor) LSMIterView_dealloc,
 	.tp_iter = (getiterfunc) LSMIterView_iter,
 	.tp_iternext = (iternextfunc) LSMKeysView_next,
-	.tp_as_sequence = &LSMIterView_sequence
+	.tp_as_sequence = &LSMKeysView_sequence
 };
 
 
@@ -580,6 +699,224 @@ static PyTypeObject LSMValuesType = {
 	.tp_iter = (getiterfunc) LSMIterView_iter,
 	.tp_iternext = (iternextfunc) LSMValuesView_next,
 	.tp_as_sequence = &LSMIterView_sequence
+};
+
+
+static PyObject* LSMSliceView_new(PyTypeObject *type) {
+	LSMSliceView *self;
+	self = (LSMSliceView *) type->tp_alloc(type, 0);
+	return (PyObject *) self;
+}
+
+
+static void LSMSliceView_dealloc(LSMSliceView *self) {
+	if (self->db == NULL) return;
+
+	if (self->cursor != NULL) {
+		LSM_MutexLock(self->db);
+		lsm_csr_close(self->cursor);
+		LSM_MutexLeave(self->db);
+	}
+
+	if (self->db != NULL) Py_DECREF(self->db);
+	if (self->start != NULL) Py_DECREF(self->start);
+	if (self->stop != NULL) Py_DECREF(self->stop);
+
+	self->cursor = NULL;
+	self->db = NULL;
+	self->pStart = NULL;
+	self->pStop = NULL;
+	self->stop = NULL;
+}
+
+
+static int LSMSliceView_init(
+	LSMSliceView *self,
+	LSM* lsm,
+	PyObject* start,
+	PyObject* stop,
+	PyObject* step
+) {
+	assert(lsm != NULL);
+	if (pylsm_ensure_opened(lsm)) return -1;
+
+	if (step == Py_None) {
+		self->step = 1;
+	} else {
+		if (!PyLong_Check(step)) {
+			PyErr_Format(
+				PyExc_ValueError,
+				"step must be int not %R",
+				PyObject_Type(step)
+			);
+			return -1;
+		}
+		self->step = PyLong_AsLong(step);
+	}
+
+	self->direction = (self->step > 0) ? PY_LSM_SLICE_FORWARD : PY_LSM_SLICE_BACKWARD;
+
+	self->db = lsm;
+
+	switch (self->direction) {
+		case PY_LSM_SLICE_FORWARD:
+			self->stop = stop;
+			self->start = start;
+			break;
+		case PY_LSM_SLICE_BACKWARD:
+			self->stop = start;
+			self->start = stop;
+			break;
+	}
+
+	self->pStop = NULL;
+	self->nStop = 0;
+	self->counter = 0;
+
+	if (stop != Py_None) {
+		if (str_or_bytes_check(self->db->binary, self->stop, &self->pStop, &self->nStop)) return -1;
+		Py_INCREF(self->stop);
+	}
+
+	if (stop != Py_None) {
+		if (str_or_bytes_check(self->db->binary, self->start, &self->pStart, &self->nStart)) return -1;
+		Py_INCREF(self->start);
+	}
+
+	Py_INCREF(self->db);
+	Py_INCREF(self);
+
+	self->state = PY_LSM_INITIALIZED;
+	return 0;
+}
+
+
+static LSMSliceView* LSMSliceView_iter(LSMSliceView* self) {
+	if (pylsm_ensure_opened(self->db)) return NULL;
+
+	LSM_MutexLock(self->db);
+
+	if (pylsm_error(lsm_csr_open(self->db->lsm, &self->cursor))) {
+		LSM_MutexLeave(self->db);
+	    return NULL;
+	}
+
+	const char* pKey;
+	int nKey;
+
+	if (self->pStart != NULL) {
+		if (pylsm_error(
+			lsm_csr_seek(
+				self->cursor, self->pStart, self->nStart,
+				(self->direction == PY_LSM_SLICE_FORWARD)? LSM_SEEK_GE : LSM_SEEK_LE
+			)
+		)) {
+			LSM_MutexLeave(self->db);
+			return NULL;
+		}
+	} else {
+		switch (self->direction) {
+			case PY_LSM_SLICE_FORWARD:
+				if (pylsm_error(lsm_csr_first(self->cursor))) {
+					LSM_MutexLeave(self->db);
+					return NULL;
+				}
+				break;
+			case PY_LSM_SLICE_BACKWARD:
+				if (pylsm_error(lsm_csr_last(self->cursor))) {
+					LSM_MutexLeave(self->db);
+					return NULL;
+				}
+				break;
+		}
+	}
+
+	LSM_MutexLeave(self->db);
+	return self;
+}
+
+
+static PyObject* LSMSliceView_next(LSMSliceView *self) {
+	if (pylsm_ensure_opened(self->db)) return NULL;
+
+	if (self->state == PY_LSM_CLOSED) {
+		PyErr_SetNone(PyExc_StopIteration);
+		return NULL;
+	}
+
+	if (!lsm_csr_valid(self->cursor)) {
+		PyErr_SetNone(PyExc_StopIteration);
+		return NULL;
+	}
+
+	int rc;
+
+	Py_BEGIN_ALLOW_THREADS
+	LSM_MutexLock(self->db);
+
+	if (self->state == PY_LSM_INITIALIZED) {
+		self->state = PY_LSM_OPENED;
+		rc = pylsm_slice_first(self);
+	} else {
+		rc = pylsm_slice_next(self);
+	}
+
+	LSM_MutexLeave(self->db);
+	Py_END_ALLOW_THREADS
+
+	if (rc == -1) {
+		self->state = PY_LSM_CLOSED;
+		PyErr_SetNone(PyExc_StopIteration);
+		return NULL;
+	}
+
+	if (pylsm_error(rc)) return NULL;
+
+	PyObject *result;
+	PyObject *key;
+	PyObject *value;
+
+	char *pKey = NULL;
+	ssize_t nKey = 0;
+
+	char *pValue = NULL;
+	ssize_t nValue = 0;
+
+	if (!lsm_csr_valid(self->cursor)) {
+		PyErr_SetNone(PyExc_StopIteration);
+		return NULL;
+	}
+
+	if (rc = pylsm_error(lsm_csr_key(self->cursor, &pKey, &nKey))) return rc;
+	if (rc = pylsm_error(lsm_csr_value(self->cursor, &pValue, &nValue))) return rc;
+
+	if (self->db->binary) {
+		key = PyBytes_FromStringAndSize(pKey, nKey);
+	} else {
+		key = PyUnicode_FromStringAndSize(pKey, nKey);
+	}
+
+	if (self->db->binary) {
+		value = PyBytes_FromStringAndSize(pValue, nValue);
+	} else {
+		value = PyUnicode_FromStringAndSize(pValue, nValue);
+	}
+
+	self->counter++;
+
+	return PyTuple_Pack(2, key, value);
+}
+
+
+static PyTypeObject LSMSliceType = {
+	PyVarObject_HEAD_INIT(NULL, 0)
+	.tp_name = "lsm_slice",
+	.tp_basicsize = sizeof(LSMSliceView),
+	.tp_itemsize = 0,
+	.tp_flags = Py_TPFLAGS_DEFAULT,
+	.tp_dealloc = (destructor) LSMSliceView_dealloc,
+	.tp_iter = (getiterfunc) LSMSliceView_iter,
+	.tp_iternext = (iternextfunc) LSMSliceView_next
 };
 
 
@@ -1053,35 +1390,6 @@ static PyObject* LSM_cursor(LSM *self, PyObject *args, PyObject *kwds) {
 }
 
 
-static int str_or_bytes_check(char binary, PyObject* pObj, const char** ppBuff, ssize_t* nBuf) {
-	const char * buff = NULL;
-	ssize_t buff_len = 0;
-
-	if (binary) {
-		if (PyBytes_Check(pObj)) {
-			buff_len = PyBytes_GET_SIZE(pObj);
-			buff = PyBytes_AS_STRING(pObj);
-		} else {
-			PyErr_Format(PyExc_ValueError, "bytes expected not %R", PyObject_Type(pObj));
-			return -1;
-		}
-	} else {
-		if (PyUnicode_Check(pObj)) {
-			buff = PyUnicode_AsUTF8AndSize(pObj, &buff_len);
-			if (buff == NULL) return -1;
-		} else {
-			PyErr_Format(PyExc_ValueError, "str expected not %R", PyObject_Type(pObj));
-			return -1;
-		}
-	}
-
-	*ppBuff = buff;
-	*nBuf = buff_len;
-
-	return 0;
-}
-
-
 static PyObject* LSM_insert(LSM *self, PyObject *args, PyObject *kwds) {
 	if (pylsm_ensure_opened(self)) return NULL;
 
@@ -1212,6 +1520,14 @@ static PyObject* LSM_getitem(LSM *self, PyObject *arg) {
 	Py_ssize_t nKey = 0;
 	ssize_t tuple_size;
 	int seek_mode = LSM_SEEK_EQ;
+
+	if (PySlice_Check(arg)) {
+		PySliceObject* slice = (PySliceObject*) arg;
+
+		LSMSliceView* view = (LSMSliceView*) LSMSliceView_new(&LSMSliceType);
+		if (LSMSliceView_init(view, self, slice->start, slice->stop, slice->step)) return NULL;
+		return view;
+	}
 
 	if (PyTuple_Check(arg)) {
 		tuple_size = PyTuple_GET_SIZE(arg);
@@ -2083,6 +2399,9 @@ PyMODINIT_FUNC PyInit_lsm(void) {
 
 	if (PyType_Ready(&LSMKeysType) < 0) return NULL;
 	Py_INCREF(&LSMKeysType);
+
+	if (PyType_Ready(&LSMSliceType) < 0) return NULL;
+	Py_INCREF(&LSMSliceType);
 
 	PyModule_AddIntConstant(m, "SAFETY_OFF", LSM_SAFETY_OFF);
 	PyModule_AddIntConstant(m, "SAFETY_NORMAL", LSM_SAFETY_NORMAL);
