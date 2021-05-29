@@ -90,7 +90,7 @@ b'bar'
 >>> from lsm import LSM
 >>> with LSM("/tmp/test.ldb", binary=False) as db:
 ...    db['foo'] = 'bar'
-...    print db['foo']
+...    print(db['foo'])
 bar
 ```
 
@@ -213,7 +213,7 @@ cursors for traversing records.
 
 >>> with db.cursor() as cursor:
 ...     for key, value in cursor:
-...         print key, '=>', value
+...         print(key, '=>', value)
 ...
 foo => bar
 k0 => 0
@@ -222,11 +222,11 @@ k0 => 0
 
 >>> with db.cursor() as cursor:
 ...     cursor.first()
-...     print cursor.key()
+...     print(cursor.key())
 ...     cursor.last()
-...     print cursor.key()
+...     print(cursor.key())
 ...     cursor.previous()
-...     print cursor.key()
+...     print(cursor.key())
 ...
 foo
 k3
@@ -234,7 +234,7 @@ k2
 
 >>> with db.cursor() as cursor:
 ...     cursor.seek('k0', SEEK_GE)
-...     print list(cursor.fetch_until('k99'))
+...     print(list(cursor.fetch_until('k99')))
 ...
 [('k0', '0'), ('k1', '1'), ('k2', '2'), ('k3', '3')]
 ```
@@ -258,7 +258,7 @@ decorator.
 ...         txn2.rollback()
 ...
 True
->>> print db['k1'], db['k2']
+>>> print(db['k1'], db['k2'])
 1-mod 2
 ```
 
@@ -273,9 +273,9 @@ You can commit or roll-back transactions part-way through a wrapped block:
 ...    db['k1'] = 'outer txn-2'
 ...    with db.transaction() as txn2:
 ...        db['k1'] = 'inner-txn'  # This is commited after the block ends.
-...    print db['k1']  # Prints "inner-txn".
+...    print(db['k1']  # Prints "inner-txn".)
 ...    txn.rollback()  # Rolls back both the changes from txn2 and the preceding write.
-...    print db['k1']
+...    print(db['k1'])
 ...
 1              <- Return value from call to commit().
 inner-txn      <- Printed after end of txn2.
@@ -290,11 +290,11 @@ If you like, you can also explicitly call `LSM.begin()`, `LSM.commit()`, and
 
 >>> db.begin()
 >>> db['foo'] = 'baze'
->>> print db['foo']
+>>> print(db['foo'])
 baze
 >>> db.rollback()
 True
->>> print db['foo']
+>>> print(db['foo'])
 bar
 ```
 

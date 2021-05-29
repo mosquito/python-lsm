@@ -84,14 +84,25 @@ typedef struct {
 } LSMSliceView;
 
 
+typedef struct {
+	PyObject_HEAD
+	LSM *db;
+	int tx_level;
+	int state;
+} LSMTransaction;
+
+
 static PyTypeObject LSMType;
 static PyTypeObject LSMCursorType;
 static PyTypeObject LSMKeysType;
 static PyTypeObject LSMValuesType;
 static PyTypeObject LSMItemsType;
+static PyTypeObject LSMSliceType;
+static PyTypeObject LSMTransactionType;
 
 
 static PyObject* LSMCursor_new(PyTypeObject*);
+static PyObject* LSMTransaction_new(PyTypeObject *type);
 
 
 enum {
@@ -1388,7 +1399,6 @@ static PyObject* LSM_cursor(LSM *self, PyObject *args, PyObject *kwds) {
 	cursor->state = PY_LSM_OPENED;
 
 	Py_INCREF(cursor->db);
-	Py_INCREF(cursor);
 
 	return (PyObject*) cursor;
 }
@@ -1914,6 +1924,23 @@ static PyObject* LSM_update(LSM* self, PyObject *args) {
 	}
 }
 
+
+static LSMTransaction* LSM_transaction(LSM* self) {
+	LSM_begin(self);
+	if (PyErr_Occurred()) return NULL;
+
+	LSMTransaction* tx = (LSMTransaction*) LSMTransaction_new(&LSMTransactionType);
+	tx->tx_level = self->tx_level;
+	tx->db = self;
+
+	Py_INCREF(tx->db);
+
+	if (PyErr_Occurred()) return NULL;
+
+	return tx;
+}
+
+
 static PyMemberDef LSM_members[] = {
 	{
 		"path",
@@ -2108,6 +2135,16 @@ static PyMethodDef LSM_methods[] = {
 		"Rollback transaction"
 	},
 	{
+		"transaction",
+		(PyCFunction) LSM_transaction, METH_NOARGS,
+		"Return transaction instance"
+	},
+	{
+		"tx",
+		(PyCFunction) LSM_transaction, METH_NOARGS,
+		"Alias of transaction method"
+	},
+	{
 		"keys",
 		(PyCFunction) LSM_keys, METH_NOARGS,
 		"Returns lsm_keys instance"
@@ -2178,6 +2215,8 @@ static PyObject* LSMCursor_new(PyTypeObject *type) {
 
 	self = (LSMCursor *) type->tp_alloc(type, 0);
 	self->state = PY_LSM_INITIALIZED;
+
+	Py_INCREF(self);
 
 	return (PyObject *) self;
 }
@@ -2637,6 +2676,112 @@ static PyTypeObject LSMCursorType = {
 };
 
 
+static PyObject* LSMTransaction_new(PyTypeObject *type) {
+	LSMTransaction *self;
+
+	self = (LSMTransaction *) type->tp_alloc(type, 0);
+	self->state = PY_LSM_INITIALIZED;
+
+	Py_INCREF(self);
+
+	return (PyObject *) self;
+}
+
+
+static void LSMTransaction_dealloc(LSMTransaction *self) {
+	if (self->state == PY_LSM_CLOSED) return;
+	if (self->db != NULL) Py_DECREF(self->db);
+}
+
+
+static PyObject* LSMTransaction_ctx_enter(LSMTransaction *self) {
+	if (self->state == PY_LSM_OPENED) return (PyObject*) self;
+
+	LSM_begin(self->db);
+	if (PyErr_Occurred()) return NULL;
+
+	Py_INCREF(self);
+
+    self->tx_level = self->db->tx_level;
+    self->state = PY_LSM_OPENED;
+
+	return (PyObject*) self;
+}
+
+
+static PyObject* LSMTransaction_ctx_exit(
+	LSMTransaction *self,
+	PyObject *exc_type,
+	PyObject *exc_value,
+	PyObject *exc_tb
+) {
+	if (self->state == PY_LSM_CLOSED) Py_RETURN_NONE;
+
+	self->state = PY_LSM_CLOSED;
+
+	if (self->tx_level != self->db->tx_level) Py_RETURN_NONE;
+
+	if (exc_type != Py_None) {
+		LSM_rollback(self->db);
+	} else {
+		LSM_commit(self->db);
+	}
+
+	if (PyErr_Occurred()) return NULL;
+
+	Py_RETURN_NONE;
+}
+
+
+static PyObject* LSMTransaction_commit(LSMTransaction *self) {
+	self->state = PY_LSM_CLOSED;
+	return LSM_commit(self->db);
+}
+
+
+static PyObject* LSMTransaction_rollback(LSMTransaction *self) {
+	self->state = PY_LSM_CLOSED;
+	return LSM_rollback(self->db);
+}
+
+
+static PyMethodDef LSMTransaction_methods[] = {
+	{
+		"__enter__",
+		(PyCFunction) LSMTransaction_ctx_enter, METH_NOARGS,
+		"Enter context"
+	},
+	{
+		"__exit__",
+		(PyCFunction) LSMTransaction_ctx_exit, METH_VARARGS | METH_KEYWORDS,
+		"Exit context"
+	},
+	{
+		"commit",
+		(PyCFunction) LSMTransaction_commit, METH_NOARGS,
+		"Commit transaction"
+	},
+	{
+		"rollback",
+		(PyCFunction) LSMTransaction_rollback, METH_NOARGS,
+		"Rollback transaction"
+	},
+
+	{NULL}  /* Sentinel */
+};
+
+static PyTypeObject LSMTransactionType = {
+	PyVarObject_HEAD_INIT(NULL, 0)
+	.tp_name = "Transaction",
+	.tp_doc = "",
+	.tp_basicsize = sizeof(LSMTransaction),
+	.tp_itemsize = 0,
+	.tp_flags = Py_TPFLAGS_DEFAULT,
+	.tp_dealloc = (destructor) LSMTransaction_dealloc,
+	.tp_methods = LSMTransaction_methods
+};
+
+
 static PyModuleDef lsm_module = {
 	PyModuleDef_HEAD_INIT,
 	.m_name = "lsm",
@@ -2666,6 +2811,15 @@ PyMODINIT_FUNC PyInit_lsm(void) {
 
 	if (PyModule_AddObject(m, "Cursor", (PyObject *) &LSMCursorType) < 0) {
 		Py_XDECREF(&LSMCursorType);
+		Py_XDECREF(m);
+		return NULL;
+	}
+
+	if (PyType_Ready(&LSMTransactionType) < 0) return NULL;
+	Py_INCREF(&LSMTransactionType);
+
+	if (PyModule_AddObject(m, "Transaction", (PyObject *) &LSMTransactionType) < 0) {
+		Py_XDECREF(&LSMTransactionType);
 		Py_XDECREF(m);
 		return NULL;
 	}
