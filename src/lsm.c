@@ -805,7 +805,7 @@ static int LSMSliceView_init(
 		Py_INCREF(self->stop);
 	}
 
-	if (stop != Py_None) {
+	if (start != Py_None) {
 		if (str_or_bytes_check(self->db->binary, self->start, &self->pStart, &self->nStart)) return -1;
 		Py_INCREF(self->start);
 	}
@@ -862,8 +862,11 @@ static PyObject* LSMSliceView_next(LSMSliceView *self) {
 
 	if (rc == -1) {
 		self->state = PY_LSM_CLOSED;
-		PyErr_SetNone(PyExc_StopIteration);
-		return NULL;
+		if (!lsm_csr_valid(self->cursor)) {
+			PyErr_SetNone(PyExc_StopIteration);
+			return NULL;
+		}
+		rc = 0;
 	}
 
 	if (pylsm_error(rc)) return NULL;
