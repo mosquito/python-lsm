@@ -387,7 +387,6 @@ int pylsm_slice_first(LSMSliceView* self) {
 
 	if (!lsm_csr_valid(self->cursor)) return -1;
 
-	self->counter++;
 	return 0;
 }
 
@@ -412,7 +411,6 @@ int pylsm_slice_next(LSMSliceView* self) {
 		}
 
 		self->counter++;
-		// FIXME: Wrong step computing
 		if ((self->counter % self->step) == 0) return 0;
 	}
 
@@ -901,8 +899,6 @@ static PyObject* LSMSliceView_next(LSMSliceView *self) {
 	} else {
 		value = PyUnicode_FromStringAndSize(pValue, nValue);
 	}
-
-	self->counter++;
 
 	return PyTuple_Pack(2, key, value);
 }
