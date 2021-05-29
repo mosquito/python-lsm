@@ -172,17 +172,25 @@ range of keys an empty list is returned.
 []
 ```
 
-To retrieve keys in reverse order, simply use a higher key as the first
-parameter of your slice. If you are retrieving an open-ended slice, you can
-specify ``True`` as the ``step`` parameter of the slice.
+To retrieve keys in reverse order or stepping over more then one item,
+simply use a third slice argument as usual.
+Negative step value means reverse order, but first and second arguments
+must be ordinary ordered.
 
 ```python
 
->>> list(db['k1':'aaa'])  # Since 'k1' > 'aaa', keys are retrieved in reverse:
-[('k1', '1'), ('k0', '0'), ('foo', 'bar')]
+>>> list(db['k0':'k99':2])
+[('k0', '0'), ('k2', '2')]
 
->>> list(db['k1'::True])  # Open-ended slices specify True for step:
-[('k1', '1'), ('k0', '0'), ('foo', 'bar')]
+>>> list(db['k0'::-1])
+[('k2', '2'), ('k1', '1'), ('k0', '0')]
+
+>>> list(db['k0'::-2])
+[('k2', '2'), ('k0', '0')]
+
+
+>>> list(db['k0'::3])
+[('k0', '0')]
 ```
 
 You can also **delete** slices of keys, but note that the delete **will not**

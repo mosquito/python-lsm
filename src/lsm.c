@@ -800,12 +800,12 @@ static int LSMSliceView_init(
 	self->nStop = 0;
 	self->counter = 0;
 
-	if (stop != Py_None) {
+	if (self->stop != Py_None) {
 		if (str_or_bytes_check(self->db->binary, self->stop, &self->pStop, &self->nStop)) return -1;
 		Py_INCREF(self->stop);
 	}
 
-	if (start != Py_None) {
+	if (self->start != Py_None) {
 		if (str_or_bytes_check(self->db->binary, self->start, &self->pStart, &self->nStart)) return -1;
 		Py_INCREF(self->start);
 	}
