@@ -2202,8 +2202,12 @@ static PyObject* LSMCursor_first(LSMCursor *self) {
 		PyErr_SetString(PyExc_RuntimeError, "can not change cursor during iteration");
 		return NULL;
 	}
+
 	if (pylsm_ensure_csr_opened(self)) return NULL;
 	int result;
+
+	self->seek_mode = LSM_SEEK_LEFAST;
+
 	Py_BEGIN_ALLOW_THREADS
 	LSM_MutexLock(self->db);
 	result = lsm_csr_first(self->cursor);
@@ -2212,7 +2216,8 @@ static PyObject* LSMCursor_first(LSMCursor *self) {
 
 	if (pylsm_error(result)) return NULL;
 	self->state = PY_LSM_OPENED;
-	Py_RETURN_NONE;
+
+	Py_RETURN_TRUE;
 }
 
 
@@ -2223,6 +2228,9 @@ static PyObject* LSMCursor_last(LSMCursor *self) {
 	}
 	if (pylsm_ensure_csr_opened(self)) return NULL;
 	int result;
+
+	self->seek_mode = LSM_SEEK_LEFAST;
+
 	Py_BEGIN_ALLOW_THREADS
 	LSM_MutexLock(self->db);
 	result = lsm_csr_last(self->cursor);
@@ -2231,7 +2239,7 @@ static PyObject* LSMCursor_last(LSMCursor *self) {
 
 	if (pylsm_error(result)) return NULL;
 	self->state = PY_LSM_OPENED;
-	Py_RETURN_NONE;
+	Py_RETURN_TRUE;
 }
 
 
@@ -2341,6 +2349,59 @@ static PyObject* LSMCursor_retrieve(LSMCursor *self) {
 }
 
 
+static PyObject* LSMCursor_key(LSMCursor *self) {
+	if (self->state == PY_LSM_ITERATING) {
+		PyErr_SetString(PyExc_RuntimeError, "can not change cursor during iteration");
+		return NULL;
+	}
+	if (pylsm_ensure_csr_opened(self)) return NULL;
+	if(!lsm_csr_valid(self->cursor)) { Py_RETURN_NONE; }
+
+	char* key_buff = NULL;
+	int key_len = 0;
+
+	LSM_MutexLock(self->db);
+	lsm_csr_key(self->cursor, (const void **)&key_buff, &key_len);
+	LSM_MutexLeave(self->db);
+
+	PyObject* key;
+
+	if (self->db->binary) {
+		key = PyBytes_FromStringAndSize(key_buff, key_len);
+	} else {
+		key = PyUnicode_FromStringAndSize(key_buff, key_len);
+	}
+
+	return key;
+}
+
+
+static PyObject* LSMCursor_value(LSMCursor *self) {
+	if (self->state == PY_LSM_ITERATING) {
+		PyErr_SetString(PyExc_RuntimeError, "can not change cursor during iteration");
+		return NULL;
+	}
+	if (pylsm_ensure_csr_opened(self)) return NULL;
+	if(!lsm_csr_valid(self->cursor)) { Py_RETURN_NONE; }
+
+	char* value_buff = NULL;
+	int value_len = 0;
+
+	LSM_MutexLock(self->db);
+	lsm_csr_value(self->cursor, (const void **)&value_buff, &value_len);
+	LSM_MutexLeave(self->db);
+
+	PyObject* value;
+
+	if (self->db->binary) {
+		value = PyBytes_FromStringAndSize(value_buff, value_len);
+	} else {
+		value = PyUnicode_FromStringAndSize(value_buff, value_len);
+	}
+	return value;
+}
+
+
 static PyObject* LSMCursor_next(LSMCursor *self) {
 	if (self->state == PY_LSM_ITERATING) {
 		PyErr_SetString(PyExc_RuntimeError, "can not change cursor during iteration");
@@ -2359,13 +2420,17 @@ static PyObject* LSMCursor_next(LSMCursor *self) {
 }
 
 
-static PyObject* LSMCursor_prev(LSMCursor *self) {
+static PyObject* LSMCursor_previous(LSMCursor *self) {
 	if (self->state == PY_LSM_ITERATING) {
 		PyErr_SetString(PyExc_RuntimeError, "can not change cursor during iteration");
 		return NULL;
 	}
 	if (pylsm_ensure_csr_opened(self)) return NULL;
-	if (self->seek_mode == LSM_SEEK_EQ) Py_RETURN_FALSE;
+	if (self->seek_mode == LSM_SEEK_EQ) {
+		PyErr_SetString(PyExc_RuntimeError, "can not seek in SEEK_EQ mode");
+		return NULL;
+	};
+
 	if (!lsm_csr_valid(self->cursor)) Py_RETURN_FALSE;
 
 	int res = 0;
@@ -2528,14 +2593,24 @@ static PyMethodDef LSMCursor_methods[] = {
 		"Retrieve key and value"
 	},
 	{
+		"key",
+		(PyCFunction) LSMCursor_key, METH_NOARGS,
+		"Retrieve key"
+	},
+	{
+		"value",
+		(PyCFunction) LSMCursor_key, METH_NOARGS,
+		"Retrieve value"
+	},
+	{
 		"next",
 		(PyCFunction) LSMCursor_next, METH_NOARGS,
 		"Seek next"
 	},
 	{
-		"prev",
-		(PyCFunction) LSMCursor_prev, METH_NOARGS,
-		"Seek prev"
+		"previous",
+		(PyCFunction) LSMCursor_previous, METH_NOARGS,
+		"Seek previous"
 	},
 	{
 		"compare",

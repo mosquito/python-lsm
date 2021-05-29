@@ -218,7 +218,7 @@ cursors for traversing records.
 foo => bar
 k0 => 0
 
->>> db.update({'k1': '1', 'k2': '2', 'k3': '3'})
+>>> db.update({'k1': '1', 'k2': '2', 'k3': '3', 'foo': 'bar'})
 
 >>> with db.cursor() as cursor:
 ...     cursor.first()
