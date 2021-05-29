@@ -419,6 +419,11 @@ int pylsm_slice_next(LSMSliceView* self) {
 }
 
 
+static inline int pylsm_seek_mode_direction(int direction) {
+	return (direction == PY_LSM_SLICE_FORWARD) ? LSM_SEEK_GE : LSM_SEEK_LE;
+}
+
+
 static int pylsm_slice_view_iter(LSMSliceView *self) {
 	int rc;
 
@@ -426,7 +431,7 @@ static int pylsm_slice_view_iter(LSMSliceView *self) {
 
 	const char* pKey;
 	int nKey;
-	int seek_mode = (self->direction == PY_LSM_SLICE_FORWARD) ? LSM_SEEK_GE : LSM_SEEK_LE;
+	int seek_mode = pylsm_seek_mode_direction(self->direction);
 
 	if (self->pStart != NULL) {
 		if (rc = lsm_csr_seek(self->cursor, self->pStart, self->nStart, seek_mode)) return rc;
@@ -1600,7 +1605,7 @@ static PyObject* LSM_getitem(LSM *self, PyObject *arg) {
 
 
 static int LSM_set_del_item(LSM* self, PyObject* key, PyObject* value) {
-	if (pylsm_ensure_opened(self)) return NULL;
+	if (pylsm_ensure_opened(self)) return -1;
 
 	int rc;
 	const char* pKey = NULL;
@@ -1608,6 +1613,55 @@ static int LSM_set_del_item(LSM* self, PyObject* key, PyObject* value) {
 
 	const char* pVal = NULL;
 	Py_ssize_t nVal = 0;
+
+	// Delete slice
+	if (PySlice_Check(key)) {
+
+		if (value != NULL) {
+			PyErr_SetString(PyExc_NotImplementedError, "setting range doesn't supported yet");
+			return -1;
+		}
+
+		PySliceObject* slice = (PySliceObject*) key;
+
+		long step = 1;
+
+		if (slice->step != Py_None) {
+			PyErr_SetString(PyExc_ValueError, "Stepping not allowed in delete_range operation");
+			return -1;
+		}
+
+		if (slice->start == Py_None || slice->stop == Py_None) {
+			PyErr_SetString(PyExc_ValueError, "You must provide range start and range stop values");
+			return -1;
+		}
+
+		char *pStop = NULL;
+		char *pStart = NULL;
+		ssize_t nStart = 0;
+		ssize_t nStop = 0;
+
+		if (str_or_bytes_check(self->binary, slice->start, &pStart, &nStart)) return -1;
+		if (str_or_bytes_check(self->binary, slice->stop, &pStop, &nStop)) return -1;
+
+		Py_INCREF(slice->start);
+		Py_INCREF(slice->stop);
+
+		int rc;
+
+		Py_BEGIN_ALLOW_THREADS
+		LSM_MutexLock(self);
+		rc = lsm_delete_range(self->lsm, pStart, nStart, pStop, nStop);
+		LSM_MutexLeave(self);
+		Py_END_ALLOW_THREADS
+
+		Py_DECREF(slice->start);
+		Py_DECREF(slice->stop);
+
+		if (pylsm_error(rc)) return -1;
+
+		return 0;
+	}
 
 	if (str_or_bytes_check(self->binary, key, &pKey, &nKey)) return -1;
 	if (value != NULL) { if (str_or_bytes_check(self->binary, value, &pVal, &nVal)) return -1; }
