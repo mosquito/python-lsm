@@ -151,7 +151,7 @@ documentation).
 [('foo', 'bar'), ('k0', '0'), ('k1', '1'), ('k2', '2')]
 
 >>> db['k0':'k99']
-<generator object at 0x7f2ae93072f8>
+<lsm_slice object at 0x10d4f3500>
 
 >>> list(db['k0':'k99'])
 [('k0', '0'), ('k1', '1'), ('k2', '2')]

@@ -51,6 +51,7 @@ typedef struct {
 	uint8_t		state;
 	lsm_cursor* cursor;
 	LSM*        db;
+	int 		seek_mode;
 } LSMCursor;
 
 
@@ -418,6 +419,32 @@ int pylsm_slice_next(LSMSliceView* self) {
 }
 
 
+static int pylsm_slice_view_iter(LSMSliceView *self) {
+	int rc;
+
+	if (rc = lsm_csr_open(self->db->lsm, &self->cursor)) return rc;
+
+	const char* pKey;
+	int nKey;
+	int seek_mode = (self->direction == PY_LSM_SLICE_FORWARD) ? LSM_SEEK_GE : LSM_SEEK_LE;
+
+	if (self->pStart != NULL) {
+		if (rc = lsm_csr_seek(self->cursor, self->pStart, self->nStart, seek_mode)) return rc;
+	} else {
+		switch (self->direction) {
+			case PY_LSM_SLICE_FORWARD:
+				if (rc =lsm_csr_first(self->cursor)) return rc;
+				break;
+			case PY_LSM_SLICE_BACKWARD:
+				if (rc = lsm_csr_last(self->cursor)) return rc;
+				break;
+		}
+	}
+
+	return LSM_OK;
+}
+
+
 static int str_or_bytes_check(char binary, PyObject* pObj, const char** ppBuff, ssize_t* nBuf) {
 	const char * buff = NULL;
 	ssize_t buff_len = 0;
@@ -450,6 +477,7 @@ static int str_or_bytes_check(char binary, PyObject* pObj, const char** ppBuff, 
 static PyObject* LSMIterView_new(PyTypeObject *type) {
 	LSMIterView *self;
 	self = (LSMIterView *) type->tp_alloc(type, 0);
+	Py_INCREF(self);
 	return (PyObject *) self;
 }
 
@@ -703,6 +731,7 @@ static PyTypeObject LSMValuesType = {
 static PyObject* LSMSliceView_new(PyTypeObject *type) {
 	LSMSliceView *self;
 	self = (LSMSliceView *) type->tp_alloc(type, 0);
+	Py_INCREF(self);
 	return (PyObject *) self;
 }
 
@@ -782,7 +811,6 @@ static int LSMSliceView_init(
 	}
 
 	Py_INCREF(self->db);
-	Py_INCREF(self);
 
 	self->state = PY_LSM_INITIALIZED;
 	return 0;
@@ -792,44 +820,14 @@ static int LSMSliceView_init(
 static LSMSliceView* LSMSliceView_iter(LSMSliceView* self) {
 	if (pylsm_ensure_opened(self->db)) return NULL;
 
+	Py_BEGIN_ALLOW_THREADS
 	LSM_MutexLock(self->db);
 
-	if (pylsm_error(lsm_csr_open(self->db->lsm, &self->cursor))) {
-		LSM_MutexLeave(self->db);
-	    return NULL;
-	}
-
-	const char* pKey;
-	int nKey;
-
-	if (self->pStart != NULL) {
-		if (pylsm_error(
-			lsm_csr_seek(
-				self->cursor, self->pStart, self->nStart,
-				(self->direction == PY_LSM_SLICE_FORWARD)? LSM_SEEK_GE : LSM_SEEK_LE
-			)
-		)) {
-			LSM_MutexLeave(self->db);
-			return NULL;
-		}
-	} else {
-		switch (self->direction) {
-			case PY_LSM_SLICE_FORWARD:
-				if (pylsm_error(lsm_csr_first(self->cursor))) {
-					LSM_MutexLeave(self->db);
-					return NULL;
-				}
-				break;
-			case PY_LSM_SLICE_BACKWARD:
-				if (pylsm_error(lsm_csr_last(self->cursor))) {
-					LSM_MutexLeave(self->db);
-					return NULL;
-				}
-				break;
-		}
-	}
+	if (pylsm_error(pylsm_slice_view_iter(self))) return NULL;
 
 	LSM_MutexLeave(self->db);
+	Py_END_ALLOW_THREADS
+
 	return self;
 }
 
@@ -2189,21 +2187,21 @@ static PyObject* LSMCursor_seek(LSMCursor *self, PyObject* args, PyObject* kwds)
 	if (pylsm_ensure_csr_opened(self)) return NULL;
 	static char *kwlist[] = {"key", "seek_mode", NULL};
 
-	int mode = LSM_SEEK_EQ;
+	self->seek_mode = LSM_SEEK_EQ;
 
 	PyObject* key = NULL;
 	const char* pKey = NULL;
 	Py_ssize_t nKey = 0;
 
-	if (!PyArg_ParseTupleAndKeywords(args, kwds, "O|I", kwlist, &key, &mode)) return NULL;
-	if (pylsm_seek_mode_check(mode)) return NULL;
+	if (!PyArg_ParseTupleAndKeywords(args, kwds, "O|I", kwlist, &key, &self->seek_mode)) return NULL;
+	if (pylsm_seek_mode_check(self->seek_mode)) return NULL;
 
 	int rc;
 
 	if (str_or_bytes_check(self->db->binary, key, &pKey, &nKey)) return NULL;
 	Py_BEGIN_ALLOW_THREADS
 	LSM_MutexLock(self->db);
-	rc = lsm_csr_seek(self->cursor, pKey, nKey, mode);
+	rc = lsm_csr_seek(self->cursor, pKey, nKey, self->seek_mode);
 	LSM_MutexLeave(self->db);
 	Py_END_ALLOW_THREADS
 
@@ -2262,6 +2260,36 @@ static PyObject* LSMCursor_retrieve(LSMCursor *self) {
 }
 
 
+static PyObject* LSMCursor_next(LSMCursor *self) {
+	if (pylsm_ensure_csr_opened(self)) return NULL;
+	if (self->seek_mode == LSM_SEEK_EQ) Py_RETURN_FALSE;
+	if (!lsm_csr_valid(self->cursor)) Py_RETURN_FALSE;
+
+	LSM_MutexLock(self->db);
+	if (pylsm_error(lsm_csr_next(self->cursor))) return NULL;
+	LSM_MutexLeave(self->db);
+
+	if (!lsm_csr_valid(self->cursor)) Py_RETURN_FALSE;
+	Py_RETURN_TRUE;
+}
+
+
+static PyObject* LSMCursor_prev(LSMCursor *self) {
+	if (pylsm_ensure_csr_opened(self)) return NULL;
+	if (self->seek_mode == LSM_SEEK_EQ) Py_RETURN_FALSE;
+	if (!lsm_csr_valid(self->cursor)) Py_RETURN_FALSE;
+
+	int res = 0;
+
+	LSM_MutexLock(self->db);
+	if (pylsm_error(lsm_csr_prev(self->cursor))) return NULL;
+	LSM_MutexLeave(self->db);
+
+	if (!lsm_csr_valid(self->cursor)) Py_RETURN_FALSE;
+	Py_RETURN_TRUE;
+}
+
+
 static PyObject* LSMCursor_ctx_enter(LSMCursor *self) {
 	if (pylsm_ensure_csr_opened(self)) return NULL;
 	return (PyObject*) self;
@@ -2287,9 +2315,16 @@ static PyMemberDef LSMCursor_members[] = {
 	{
 		"state",
 		T_INT,
-		offsetof(LSM, state),
+		offsetof(LSMCursor, state),
 		READONLY,
 		"state"
+	},
+	{
+		"seek_mode",
+		T_INT,
+		offsetof(LSMCursor, seek_mode),
+		READONLY,
+		"seek_mode"
 	},
 	{NULL}  /* Sentinel */
 };
@@ -2330,6 +2365,16 @@ static PyMethodDef LSMCursor_methods[] = {
 		"retrieve",
 		(PyCFunction) LSMCursor_retrieve, METH_NOARGS,
 		"Retrieve key and value"
+	},
+	{
+		"next",
+		(PyCFunction) LSMCursor_next, METH_NOARGS,
+		"Seek next"
+	},
+	{
+		"prev",
+		(PyCFunction) LSMCursor_prev, METH_NOARGS,
+		"Seek prev"
 	},
 	{
 		"compare",
