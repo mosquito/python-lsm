@@ -298,7 +298,7 @@ True
 bar
 ```
 
-### Thanks to [@coleifer](https://github.com/coleifer)
+### Thanks to
 
-This project was inspired by
+* [@coleifer](https://github.com/coleifer) - this project was inspired by
 [coleifer/python-lsm-db](https://github.com/coleifer/python-lsm-db).
