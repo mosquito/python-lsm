@@ -74,7 +74,7 @@ def get_value(idx) -> Union[bytes, str]:
         "registration": {
             "join_date": datetime_generator.datetime().isoformat(),
         }
-    })
+    }).encode()
 
 
 def fill_db(path, *, n, pool_size, **kwargs):
