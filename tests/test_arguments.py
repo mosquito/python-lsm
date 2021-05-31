@@ -3,9 +3,6 @@ from lsm import LSM
 
 
 def test_argument_checks(subtests, tmp_path):
-    with subtests.test("path=None"), pytest.raises(TypeError):
-        LSM(None)
-
     with subtests.test("autoflush=1048577"), pytest.raises(ValueError):
         LSM(str(tmp_path / "test.lsm"), autoflush=1048577)
 
