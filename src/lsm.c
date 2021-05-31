@@ -1011,7 +1011,7 @@ static int LSM_init(LSM *self, PyObject *args, PyObject *kwds) {
 	Py_ssize_t path_len;
 
 	if (!PyArg_ParseTupleAndKeywords(
-		args, kwds, "s#|IIIIIIIppppppOOi", kwlist,
+		args, kwds, "s#|iiIIIIIppppppOOi", kwlist,
 		&path, &path_len,
 		&self->autoflush,
 		&self->page_size,
@@ -1040,16 +1040,24 @@ static int LSM_init(LSM *self, PyObject *args, PyObject *kwds) {
 		PyErr_Format(
 			PyExc_ValueError,
 			"The maximum allowable value for autoflush parameter "
-			"is 1048576 (1GB). Not %d",
-			self->autoflush
+			"is 1048576 (1GB). Not %d", self->autoflush
 		);
 		return -1;
 	}
 
-	if (self->autocheckpoint == 0) {
+	if (self->autoflush < 0) {
+		PyErr_Format(
+			PyExc_ValueError,
+			"The minimum allowable value for autoflush parameter "
+			"is 0. Not %d", self->autoflush
+		);
+		return -1;
+	}
+
+	if (self->autocheckpoint <= 0) {
 		PyErr_SetString(
 			PyExc_ValueError,
-			"autocheckpoint is not able to be zero"
+			"autocheckpoint is not able to be zero or lower"
 		);
 		return -1;
 	}
