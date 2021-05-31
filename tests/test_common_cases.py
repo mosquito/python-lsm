@@ -5,7 +5,7 @@ from lsm import LSM, SEEK_LE, SEEK_GE, SEEK_EQ
 @pytest.fixture(params=["none", "lz4", "zstd"])
 def db(request, tmp_path):
     with LSM(
-        str(tmp_path / ("db" + request.param)),
+        tmp_path / ("db" + request.param),
         compress=request.param,
         binary=False
     ) as db:

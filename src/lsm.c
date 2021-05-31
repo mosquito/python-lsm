@@ -1007,12 +1007,13 @@ static int LSM_init(LSM *self, PyObject *args, PyObject *kwds) {
 	PyObject* compress = Py_None;
 	int compressor_id = LSM_COMPRESSION_NONE;
 
+	PyObject* pyPath;
 	char *path;
 	Py_ssize_t path_len;
 
 	if (!PyArg_ParseTupleAndKeywords(
-		args, kwds, "s#|iiIIIIIppppppOOi", kwlist,
-		&path, &path_len,
+		args, kwds, "O|iiIIIIIppppppOOi", kwlist,
+		&pyPath,
 		&self->autoflush,
 		&self->page_size,
 		&self->safety,
@@ -1030,6 +1031,11 @@ static int LSM_init(LSM *self, PyObject *args, PyObject *kwds) {
 		&compress,
 		&self->compress_level
 	)) return -1;
+
+	if (!PyUnicode_Check(pyPath)) pyPath = PyObject_Str(pyPath);
+
+	path = PyUnicode_AsUTF8AndSize(pyPath, &path_len);
+	if (path == NULL) return -1;
 
 	self->path = PyMem_Calloc(sizeof(char), path_len + 1);
 	memcpy(self->path, path, path_len);

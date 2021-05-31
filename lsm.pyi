@@ -65,7 +65,7 @@ class LSM:
     compress_level: int
 
     def __init__(
-        self, path: str, *,
+        self, path: Any, *,
         autoflush: int = 1024,
         page_size: int = 4096,
         safety: int = SAFETY_NORMAL,
