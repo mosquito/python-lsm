@@ -16,22 +16,6 @@ from tqdm import tqdm
 from mimesis import Person, Address, Business, Datetime
 
 
-parser = ArgumentParser()
-parser.add_argument("-n", "--count", default=100000, type=int)
-parser.add_argument("--pool-size", type=int, default=cpu_count())
-parser.add_argument(
-    "--clear",
-    help="Keep existent database before writing",
-    action="store_true",
-)
-parser.add_argument(
-    "--path",
-    default=os.path.join(tempfile.gettempdir(), "lsm-compressed"),
-)
-
-parser.add_argument("--run-sequentially", action="store_true")
-
-
 class AppendConstAction(Action):
     def __init__(self, option_strings, dest, const=None, default=None,
                  type=None, choices=None, required=False,
@@ -48,6 +32,21 @@ class AppendConstAction(Action):
         lst = getattr(namespace, self.dest)
         lst.append(self.const)
 
+
+parser = ArgumentParser()
+parser.add_argument("-n", "--count", default=100000, type=int)
+parser.add_argument("--pool-size", type=int, default=cpu_count())
+parser.add_argument(
+    "--clear",
+    help="Keep existent database before writing",
+    action="store_true",
+)
+parser.add_argument(
+    "--path",
+    default=os.path.join(tempfile.gettempdir(), "lsm-compressed"),
+)
+
+parser.add_argument("--run-sequentially", action="store_true")
 
 group = parser.add_argument_group("cases")
 group.add_argument(
@@ -98,6 +97,13 @@ group.add_argument(
     "--bench-select-rnd",
     dest="benchmarks",
     const="select-rnd",
+    action=AppendConstAction,
+)
+
+group.add_argument(
+    "--bench-copy-seq",
+    dest="benchmarks",
+    const="copy-seq",
     action=AppendConstAction,
 )
 
@@ -213,6 +219,18 @@ def select_thread_pool(path, *, keys_iter, keys_total, pool_size, **kwargs):
             conn.close()
 
 
+def copy_seq(path, **kwargs):
+    print("Opening:", path, "with", kwargs)
+
+    with tempfile.TemporaryDirectory() as dest:
+        dest = lsm.LSM(os.path.join(dest, "lsm-copy"), **kwargs)
+        src = lsm.LSM(path, readonly=True, **kwargs)
+
+        with src, dest:
+            for key, value in tqdm(src.items(), total=len(src.keys())):
+                dest[key] = value
+
+
 def run_parallel(func, cases):
     with ThreadPool(len(cases)) as pool:
         for _ in pool.imap_unordered(func, cases):
@@ -230,6 +248,7 @@ def main():
     run_insert = False
     run_select_seq = False
     run_select_rnd = False
+    run_copy_seq = False
 
     if not arguments.benchmarks:
         run_insert = True
@@ -242,11 +261,14 @@ def main():
             run_select_seq = True
         if "select-rnd" in arguments.benchmarks:
             run_select_rnd = True
+        if "copy-seq" in arguments.benchmarks:
+            run_copy_seq = True
 
         if "all" in arguments.benchmarks:
             run_insert = True
             run_select_seq = True
             run_select_rnd = True
+            run_copy_seq = True
 
     if not arguments.cases or "all" in arguments.cases:
         cases = [
@@ -317,6 +339,14 @@ def main():
     if run_select_rnd:
         print("Select all keys random")
         run(select_random_job, cases)
+
+    def copy_seq_job(item):
+        path, kwargs = item
+        return copy_seq(path, **kwargs)
+
+    if run_copy_seq:
+        print("Copy database")
+        run(copy_seq_job, cases)
 
 
 if __name__ == '__main__':
