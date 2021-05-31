@@ -1218,9 +1218,7 @@ static PyObject* LSM_open(LSM *self) {
 	}
 
 	int result;
-	Py_BEGIN_ALLOW_THREADS
 	result = lsm_open(self->lsm, self->path);
-	Py_END_ALLOW_THREADS
 
 	if (pylsm_error(result)) return NULL;
 
