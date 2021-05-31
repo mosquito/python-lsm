@@ -17,7 +17,7 @@ if platform.system() in ("Darwin", "Linux"):
     compiller_args += (
         "-g3",
         "-std=c99",
-        "-O0",
+        "-Os",
         "-fpic"
     )
     libraries.append("pthread")

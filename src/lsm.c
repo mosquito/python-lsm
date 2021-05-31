@@ -504,9 +504,11 @@ static void LSMIterView_dealloc(LSMIterView *self) {
 	if (self->db == NULL) return;
 
 	if (self->cursor != NULL) {
+		Py_BEGIN_ALLOW_THREADS
 		LSM_MutexLock(self->db);
 		lsm_csr_close(self->cursor);
 		LSM_MutexLeave(self->db);
+		Py_END_ALLOW_THREADS
 	}
 
 	Py_DECREF(self->db);
@@ -1234,9 +1236,11 @@ static PyObject* LSM_open(LSM *self) {
 
 static int _LSM_close(LSM* self) {
 	int result;
+	Py_BEGIN_ALLOW_THREADS
 	LSM_MutexLock(self);
 	result = lsm_close(self->lsm);
 	LSM_MutexLeave(self);
+	Py_END_ALLOW_THREADS
 	self->lsm = NULL;
 	self->state = PY_LSM_CLOSED;
 	return result;
@@ -1264,6 +1268,7 @@ static PyObject* LSM_info(LSM *self) {
 	int checkpoint_size, checkpoint_size_result;
 	int tree_size_old, tree_size_current, tree_size_result;
 
+	Py_BEGIN_ALLOW_THREADS
 	LSM_MutexLock(self);
 	nwrite_result = lsm_info(
 		self->lsm, LSM_INFO_NWRITE, &nwrite
@@ -1278,6 +1283,7 @@ static PyObject* LSM_info(LSM *self) {
 		self->lsm, LSM_INFO_TREE_SIZE, &tree_size_old, &tree_size_current
 	);
 	LSM_MutexLeave(self);
+	Py_END_ALLOW_THREADS
 
 	if (pylsm_error(nwrite_result)) return NULL;
 	if (pylsm_error(nread_result)) return NULL;
@@ -2348,9 +2354,9 @@ static PyObject* LSMCursor_compare(LSMCursor *self, PyObject* args, PyObject* kw
 	int cmp_result = 0;
 	int result;
 
-	LSM_MutexLock(self->db);
+//	LSM_MutexLock(self->db);
 	result = lsm_csr_cmp(self->cursor, pKey, nKey, &cmp_result);
-	LSM_MutexLeave(self->db);
+//	LSM_MutexLeave(self->db);
 
 	if (pylsm_error(result)) return NULL;
 	return PyLong_FromLong(cmp_result);
@@ -2369,10 +2375,10 @@ static PyObject* LSMCursor_retrieve(LSMCursor *self) {
 	int key_len = 0;
 	int value_len = 0;
 
-	LSM_MutexLock(self->db);
+//	LSM_MutexLock(self->db);
 	lsm_csr_key(self->cursor, (const void **)&key_buff, &key_len);
 	lsm_csr_value(self->cursor, (const void **)&value_buff, &value_len);
-	LSM_MutexLeave(self->db);
+//	LSM_MutexLeave(self->db);
 
 	PyObject* key;
 	PyObject* value;
@@ -2399,9 +2405,9 @@ static PyObject* LSMCursor_key(LSMCursor *self) {
 	char* key_buff = NULL;
 	int key_len = 0;
 
-	LSM_MutexLock(self->db);
+//	LSM_MutexLock(self->db);
 	lsm_csr_key(self->cursor, (const void **)&key_buff, &key_len);
-	LSM_MutexLeave(self->db);
+//	LSM_MutexLeave(self->db);
 
 	PyObject* key;
 
@@ -2426,9 +2432,9 @@ static PyObject* LSMCursor_value(LSMCursor *self) {
 	char* value_buff = NULL;
 	int value_len = 0;
 
-	LSM_MutexLock(self->db);
+//	LSM_MutexLock(self->db);
 	lsm_csr_value(self->cursor, (const void **)&value_buff, &value_len);
-	LSM_MutexLeave(self->db);
+//	LSM_MutexLeave(self->db);
 
 	PyObject* value;
 
@@ -2450,9 +2456,11 @@ static PyObject* LSMCursor_next(LSMCursor *self) {
 	if (self->seek_mode == LSM_SEEK_EQ) Py_RETURN_FALSE;
 	if (!lsm_csr_valid(self->cursor)) Py_RETURN_FALSE;
 
+	Py_BEGIN_ALLOW_THREADS
 	LSM_MutexLock(self->db);
 	if (pylsm_error(lsm_csr_next(self->cursor))) return NULL;
 	LSM_MutexLeave(self->db);
+	Py_END_ALLOW_THREADS
 
 	if (!lsm_csr_valid(self->cursor)) Py_RETURN_FALSE;
 	Py_RETURN_TRUE;
@@ -2474,9 +2482,11 @@ static PyObject* LSMCursor_previous(LSMCursor *self) {
 
 	int res = 0;
 
+	Py_BEGIN_ALLOW_THREADS
 	LSM_MutexLock(self->db);
 	if (pylsm_error(lsm_csr_prev(self->cursor))) return NULL;
 	LSM_MutexLeave(self->db);
+	Py_END_ALLOW_THREADS
 
 	if (!lsm_csr_valid(self->cursor)) Py_RETURN_FALSE;
 	Py_RETURN_TRUE;
@@ -2552,6 +2562,7 @@ static PyObject* LSMCursor_iter_next(LSMCursor* self) {
 	int nKey = 0;
 	int nVal = 0;
 
+	Py_BEGIN_ALLOW_THREADS
 	LSM_MutexLock(self->db);
 
 	lsm_csr_key(self->cursor, (const void **)&pKey, &nKey);
@@ -2560,6 +2571,7 @@ static PyObject* LSMCursor_iter_next(LSMCursor* self) {
 	if (pylsm_error(lsm_csr_next(self->cursor))) return NULL;
 
 	LSM_MutexLeave(self->db);
+	Py_END_ALLOW_THREADS
 
 	PyObject* key;
 	PyObject* value;
