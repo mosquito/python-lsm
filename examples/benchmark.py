@@ -254,6 +254,7 @@ def main():
         run_insert = True
         run_select_seq = True
         run_select_rnd = True
+        run_copy_seq = True
     else:
         if "insert" in arguments.benchmarks:
             run_insert = True
