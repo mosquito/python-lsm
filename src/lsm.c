@@ -2366,9 +2366,9 @@ static PyObject* LSMCursor_compare(LSMCursor *self, PyObject* args, PyObject* kw
 	int cmp_result = 0;
 	int result;
 
-//	LSM_MutexLock(self->db);
+	LSM_MutexLock(self->db);
 	result = lsm_csr_cmp(self->cursor, pKey, nKey, &cmp_result);
-//	LSM_MutexLeave(self->db);
+	LSM_MutexLeave(self->db);
 
 	if (pylsm_error(result)) return NULL;
 	return PyLong_FromLong(cmp_result);
@@ -2387,10 +2387,10 @@ static PyObject* LSMCursor_retrieve(LSMCursor *self) {
 	int key_len = 0;
 	int value_len = 0;
 
-//	LSM_MutexLock(self->db);
+	LSM_MutexLock(self->db);
 	lsm_csr_key(self->cursor, (const void **)&key_buff, &key_len);
 	lsm_csr_value(self->cursor, (const void **)&value_buff, &value_len);
-//	LSM_MutexLeave(self->db);
+	LSM_MutexLeave(self->db);
 
 	PyObject* key;
 	PyObject* value;
@@ -2417,9 +2417,9 @@ static PyObject* LSMCursor_key(LSMCursor *self) {
 	char* key_buff = NULL;
 	int key_len = 0;
 
-//	LSM_MutexLock(self->db);
+	LSM_MutexLock(self->db);
 	lsm_csr_key(self->cursor, (const void **)&key_buff, &key_len);
-//	LSM_MutexLeave(self->db);
+	LSM_MutexLeave(self->db);
 
 	PyObject* key;
 
@@ -2444,9 +2444,9 @@ static PyObject* LSMCursor_value(LSMCursor *self) {
 	char* value_buff = NULL;
 	int value_len = 0;
 
-//	LSM_MutexLock(self->db);
+	LSM_MutexLock(self->db);
 	lsm_csr_value(self->cursor, (const void **)&value_buff, &value_len);
-//	LSM_MutexLeave(self->db);
+	LSM_MutexLeave(self->db);
 
 	PyObject* value;
 
