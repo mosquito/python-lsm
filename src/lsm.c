@@ -402,7 +402,8 @@ int pylsm_slice_first(LSMSliceView* self) {
 
 	if (self->pStop != NULL) {
 		if (rc = lsm_csr_cmp(self->cursor, self->pStop, self->nStop, &cmp_res)) return rc;
-		if (cmp_res == 0) return -1;
+		if (self->direction == PY_LSM_SLICE_FORWARD && cmp_res > 0) return -1;
+		if (self->direction == PY_LSM_SLICE_BACKWARD && cmp_res < 0) return -1;
 	}
 
 	if (!lsm_csr_valid(self->cursor)) return -1;
@@ -425,9 +426,12 @@ int pylsm_slice_next(LSMSliceView* self) {
 				break;
 		}
 
+		if (!lsm_csr_valid(self->cursor)) break;
+
 		if (self->pStop != NULL) {
 			if (rc = lsm_csr_cmp(self->cursor, self->pStop, self->nStop, &cmp_res)) return rc;
-			if (cmp_res == 0) return -1;
+			if (self->direction == PY_LSM_SLICE_FORWARD && cmp_res > 0) break;
+			if (self->direction == PY_LSM_SLICE_BACKWARD && cmp_res < 0) break;
 		}
 
 		self->counter++;
