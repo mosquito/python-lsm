@@ -1,2 +1,14 @@
+# Include dependency sources
+recursive-include src/lsm *.h *.c
+recursive-include src/zstd/lib *.h *.c
+recursive-include src/lz4/lib *.h *.c
+recursive-include src/sqlite/ext/lsm1 *.h *.c
+
+# Add requirement licenses
+include src/lz4/LICENSE
+include src/zstd/LICENSE
+include src/sqlite/LICENSE.md
+
+# Add library interface
 include lsm/lsm.pyi
 include README.md
