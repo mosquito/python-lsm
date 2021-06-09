@@ -381,6 +381,12 @@ static int pylsm_ensure_opened(LSM* self) {
 	return -1;
 }
 
+static int pylsm_ensure_writable(LSM* self) {
+	if (pylsm_ensure_opened(self)) return -1;
+	if (self->readonly) return pylsm_error(LSM_READONLY);
+	return 0;
+}
+
 static int pylsm_ensure_csr_opened(LSMCursor* self) {
 	if (self->state == PY_LSM_OPENED || self->state == PY_LSM_ITERATING) return 0;
 	if (pylsm_ensure_opened(self->db)) return 0;
@@ -1337,7 +1343,7 @@ static PyObject* LSM_ctx_exit(LSM *self) {
 
 
 static PyObject* LSM_work(LSM *self, PyObject *args, PyObject *kwds) {
-	if (pylsm_ensure_opened(self)) return NULL;
+	if (pylsm_ensure_writable(self)) return NULL;
 
 	static char *kwlist[] = {"nmerge", "nkb", "complete", NULL};
 
@@ -1371,7 +1377,7 @@ static PyObject* LSM_work(LSM *self, PyObject *args, PyObject *kwds) {
 
 
 static PyObject* LSM_flush(LSM *self) {
-	if (pylsm_ensure_opened(self)) return NULL;
+	if (pylsm_ensure_writable(self)) return NULL;
 
 	int rc;
 
@@ -1386,7 +1392,7 @@ static PyObject* LSM_flush(LSM *self) {
 }
 
 static PyObject* LSM_checkpoint(LSM *self) {
-	if (pylsm_ensure_opened(self)) return NULL;
+	if (pylsm_ensure_writable(self)) return NULL;
 
 	int result;
 	int bytes_written = 0;
@@ -1423,7 +1429,7 @@ static PyObject* LSM_cursor(LSM *self, PyObject *args, PyObject *kwds) {
 
 
 static PyObject* LSM_insert(LSM *self, PyObject *args, PyObject *kwds) {
-	if (pylsm_ensure_opened(self)) return NULL;
+	if (pylsm_ensure_writable(self)) return NULL;
 
 	static char *kwlist[] = {"key", "value", NULL};
 
@@ -1455,7 +1461,7 @@ static PyObject* LSM_insert(LSM *self, PyObject *args, PyObject *kwds) {
 
 
 static PyObject* LSM_delete(LSM *self, PyObject *args, PyObject *kwds) {
-	if (pylsm_ensure_opened(self)) return NULL;
+	if (pylsm_ensure_writable(self)) return NULL;
 
 	static char *kwlist[] = {"key", NULL};
 
@@ -1479,7 +1485,7 @@ static PyObject* LSM_delete(LSM *self, PyObject *args, PyObject *kwds) {
 
 
 static PyObject* LSM_delete_range(LSM *self, PyObject *args, PyObject *kwds) {
-	if (pylsm_ensure_opened(self)) return NULL;
+	if (pylsm_ensure_writable(self)) return NULL;
 
 	static char *kwlist[] = {"start", "end", NULL};
 
@@ -1509,7 +1515,7 @@ static PyObject* LSM_delete_range(LSM *self, PyObject *args, PyObject *kwds) {
 
 
 static PyObject* LSM_begin(LSM *self) {
-	if (pylsm_ensure_opened(self)) return NULL;
+	if (pylsm_ensure_writable(self)) return NULL;
 
 	int level = self->tx_level + 1;
 
@@ -1527,7 +1533,7 @@ static PyObject* LSM_begin(LSM *self) {
 
 
 static PyObject* LSM_commit(LSM *self) {
-	if (pylsm_ensure_opened(self)) return NULL;
+	if (pylsm_ensure_writable(self)) return NULL;
 
 	self->tx_level--;
 
@@ -1635,7 +1641,7 @@ static PyObject* LSM_getitem(LSM *self, PyObject *arg) {
 
 
 static int LSM_set_del_item(LSM* self, PyObject* key, PyObject* value) {
-	if (pylsm_ensure_opened(self)) return -1;
+	if (pylsm_ensure_writable(self)) return -1;
 
 	int rc;
 	const char* pKey = NULL;
@@ -1746,7 +1752,7 @@ static int LSM_contains(LSM *self, PyObject *key) {
 
 
 static PyObject* LSM_rollback(LSM *self) {
-	if (pylsm_ensure_opened(self)) return NULL;
+	if (pylsm_ensure_writable(self)) return NULL;
 
 	int result;
 	Py_BEGIN_ALLOW_THREADS
@@ -1835,7 +1841,7 @@ static LSMIterView* LSM_iter(LSM* self) {
 }
 
 static PyObject* LSM_update(LSM* self, PyObject *args) {
-	if (pylsm_ensure_opened(self)) return NULL;
+	if (pylsm_ensure_writable(self)) return NULL;
 
 	PyObject * value = NULL;
 	if (!PyArg_ParseTuple(args, "O", &value)) return NULL;
