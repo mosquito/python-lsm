@@ -665,11 +665,6 @@ static PyObject* LSMItemsView_next(LSMIterView *self) {
 		return NULL;
 	}
 
-	if (pylsm_error(lsm_csr_next(self->cursor))) {
-		LSM_MutexLeave(self->db);
-		return NULL;
-	};
-
 	LSM_MutexLeave(self->db);
 
 	PyObject *result;
@@ -687,6 +682,11 @@ static PyObject* LSMItemsView_next(LSMIterView *self) {
 	} else {
 		value = PyUnicode_FromStringAndSize(pValue, nValue);
 	}
+
+	if (pylsm_error(lsm_csr_next(self->cursor))) {
+		LSM_MutexLeave(self->db);
+		return NULL;
+	};
 
 	return PyTuple_Pack(2, key, value);
 }
@@ -888,14 +888,17 @@ static PyObject* LSMSliceView_next(LSMSliceView *self) {
 
 	if (rc == -1) {
 		self->state = PY_LSM_CLOSED;
-		if (!lsm_csr_valid(self->cursor)) {
-			PyErr_SetNone(PyExc_StopIteration);
-			return NULL;
-		}
-		rc = 0;
+		PyErr_SetNone(PyExc_StopIteration);
+		return NULL;
 	}
 
 	if (pylsm_error(rc)) return NULL;
+
+	if (!lsm_csr_valid(self->cursor)) {
+		self->state = PY_LSM_CLOSED;
+		PyErr_SetNone(PyExc_StopIteration);
+		return NULL;
+	}
 
 	PyObject *result;
 	PyObject *key;
@@ -906,11 +909,6 @@ static PyObject* LSMSliceView_next(LSMSliceView *self) {
 
 	char *pValue = NULL;
 	ssize_t nValue = 0;
-
-	if (!lsm_csr_valid(self->cursor)) {
-		PyErr_SetNone(PyExc_StopIteration);
-		return NULL;
-	}
 
 	if (rc = pylsm_error(lsm_csr_key(self->cursor, &pKey, &nKey))) return rc;
 	if (rc = pylsm_error(lsm_csr_value(self->cursor, &pValue, &nValue))) return rc;

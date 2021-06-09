@@ -1,5 +1,30 @@
 import pytest
-from lsm import LSM
+from lsm import LSM, SAFETY_OFF
+
+
+def test_multiple_open(subtests, tmp_path):
+    kwargs = {
+        'autocheckpoint': 8 * 1024,  # 8 MB
+        'autoflush': 8 * 1024,  # 8 MB
+        'multiple_processes': False,
+        'safety': SAFETY_OFF,  # do not fsync manually
+        'use_log': False,
+        'binary': False,
+    }
+
+    for prefix in ("k", "z", "a", "f", "1"):
+        with LSM(str(tmp_path / "test.lsm"), **kwargs) as db:
+            for i in range(1024):
+                db['{}{}'.format(prefix, i)] = str(i)
+
+    with LSM(str(tmp_path / "test.lsm"), binary=False, readonly=True) as db:
+        for prefix in ("k", "z", "a", "f", "1"):
+            with subtests.test(msg="prefix {}".format(i)):
+                for i in range(1024):
+                    assert db['{}{}'.format(prefix, i)] == str(i)
+
+                for key, value in db.items():
+                    assert key[1:] == value, (key, value)
 
 
 def test_db_binary(subtests, tmp_path):

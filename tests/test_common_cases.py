@@ -1,3 +1,5 @@
+import struct
+
 import pytest
 from lsm import LSM, SEEK_LE, SEEK_GE, SEEK_EQ
 
@@ -5,11 +7,37 @@ from lsm import LSM, SEEK_LE, SEEK_GE, SEEK_EQ
 @pytest.fixture(params=["none", "lz4", "zstd"])
 def db(request, tmp_path):
     with LSM(
-        tmp_path / ("db" + request.param),
+        tmp_path / ("db.lsm" + request.param),
         compress=request.param,
         binary=False
     ) as db:
         yield db
+
+
+@pytest.fixture(params=["none", "lz4", "zstd"])
+def db_binary(request, tmp_path):
+    with LSM(
+        tmp_path / ("db.lsm" + request.param),
+        compress=request.param,
+        binary=True
+    ) as db:
+        yield db
+
+
+@pytest.mark.parametrize("n", range(1, 10))
+def test_ranges(n, subtests, db_binary: LSM):
+    def make_key(*args):
+        result = struct.pack("!" + "b" * len(args), *args)
+        return result
+
+    for i in range(n):
+        for j in range(n):
+            key = make_key(i, j, 0)
+            db_binary[key] = b"\x00"
+
+    with subtests.test("one key"):
+        s = list(db_binary[make_key(0):make_key(1)])
+        assert len(s) == n, s
 
 
 def test_insert_select(subtests, db):
