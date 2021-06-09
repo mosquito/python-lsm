@@ -28,7 +28,7 @@ if platform.system() in ("Windows",):
 
 
 sources = {
-    "lsm1": [
+    "sqlite/ext/lsm1": [
         "lsm_main.c",
         "lsm_win32.c",
         "lsm_file.c",

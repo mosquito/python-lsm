@@ -4,3 +4,6 @@
 [submodule "src/zstd"]
 	path = src/zstd
 	url = https://github.com/facebook/zstd.git
+[submodule "src/sqlite"]
+	path = src/sqlite
+	url = https://github.com/sqlite/sqlite.git

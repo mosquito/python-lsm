@@ -7,7 +7,7 @@
 
 #include "lz4/lib/lz4.h"
 #include "zstd/lib/zstd.h"
-#include "lsm1/lsm.h"
+#include "sqlite/ext/lsm1/lsm.h"
 
 #define IS_64_BIT (sizeof(void*)==8)
 #define LSM_MAX_AUTOFLUSH 1048576
