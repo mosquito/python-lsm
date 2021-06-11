@@ -3,6 +3,14 @@ from lsm import LSM
 
 
 def test_argument_checks(subtests, tmp_path):
+    with subtests.test("blank context manager"), pytest.raises(ValueError):
+        with LSM(str(tmp_path / "test-filled.lsm"), binary=False) as db:
+            for i in range(1000):
+                db[str(i)] = str(i)
+
+        with LSM(str(tmp_path / "test-filled.lsm")):
+            pass
+
     with subtests.test("autoflush=1048577"), pytest.raises(ValueError):
         LSM(str(tmp_path / "test.lsm"), autoflush=1048577)
 

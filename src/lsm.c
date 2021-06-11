@@ -952,13 +952,21 @@ static PyObject* LSM_new(PyTypeObject *type, PyObject *args, PyObject *kwds) {
 }
 
 
-static void LSM_dealloc(LSM *self) {
-	if (self->state != PY_LSM_CLOSED && self->lsm != NULL) {
-		LSM_MutexLock(self);
-		lsm_close(self->lsm);
-		LSM_MutexLeave(self);
-	}
+static int _LSM_close(LSM* self) {
+	int result;
+	self->state = PY_LSM_CLOSED;
+	Py_BEGIN_ALLOW_THREADS;
+	LSM_MutexLock(self);
+	result = lsm_close(self->lsm);
+	LSM_MutexLeave(self);
+	Py_END_ALLOW_THREADS;
+	self->lsm = NULL;
+	return result;
+}
 
+
+static void LSM_dealloc(LSM *self) {
+	if (self->state != PY_LSM_CLOSED && self->lsm != NULL) _LSM_close(self);
 	if (self->lsm_mutex != NULL) self->lsm_env->xMutexDel(self->lsm_mutex);
 
 	self->lsm = NULL;
@@ -1254,18 +1262,6 @@ static PyObject* LSM_open(LSM *self) {
 	Py_RETURN_TRUE;
 }
 
-static int _LSM_close(LSM* self) {
-	int result;
-	Py_BEGIN_ALLOW_THREADS
-	LSM_MutexLock(self);
-	result = lsm_close(self->lsm);
-	LSM_MutexLeave(self);
-	Py_END_ALLOW_THREADS
-	self->lsm = NULL;
-	self->state = PY_LSM_CLOSED;
-	return result;
-}
-
 static PyObject* LSM_close(LSM *self) {
 	if (self->state == PY_LSM_CLOSED) {
 		PyErr_SetString(PyExc_RuntimeError, "Database already closed");
@@ -1281,7 +1277,7 @@ static PyObject* LSM_close(LSM *self) {
 
 
 static PyObject* LSM_info(LSM *self) {
-	if (pylsm_ensure_opened(self)) return NULL;
+	if (pylsm_ensure_writable(self)) return NULL;
 
 	int32_t nwrite; int nwrite_result;
 	int32_t nread; int nread_result;
