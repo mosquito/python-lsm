@@ -3,7 +3,7 @@ from lsm import LSM
 
 
 def test_argument_checks(subtests, tmp_path):
-    with subtests.test("blank context manager"), pytest.raises(ValueError):
+    with subtests.test("blank context manager"):
         with LSM(str(tmp_path / "test-filled.lsm"), binary=False) as db:
             for i in range(1000):
                 db[str(i)] = str(i)
