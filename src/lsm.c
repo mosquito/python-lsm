@@ -381,6 +381,10 @@ static int pylsm_contains(lsm_db* lsm, const char* pKey, int nKey) {
 
 
 static int pylsm_ensure_opened(LSM* self) {
+	if (self == NULL) {
+		PyErr_SetString(PyExc_MemoryError, "Instance deallocated");
+		return -1;
+	}
 	if (self->state == PY_LSM_OPENED) return 0;
 
 	PyErr_SetString(PyExc_RuntimeError, "Database has not opened");
