@@ -107,8 +107,8 @@ static PyTypeObject LSMSliceType;
 static PyTypeObject LSMTransactionType;
 
 
-static PyObject* LSMCursor_new(PyTypeObject*);
-static PyObject* LSMTransaction_new(PyTypeObject *type);
+static PyObject* LSMCursor_new(PyTypeObject*, LSM*);
+static PyObject* LSMTransaction_new(PyTypeObject *type, LSM*);
 
 
 enum {
@@ -1462,19 +1462,8 @@ static PyObject* LSM_checkpoint(LSM *self) {
 static PyObject* LSM_cursor(LSM *self, PyObject *args, PyObject *kwds) {
 	if (pylsm_ensure_opened(self)) return NULL;
 
-	LSMCursor* cursor = (LSMCursor*) LSMCursor_new(&LSMCursorType);
-	cursor->db = self;
-
-	int rc;
-
-	LSM_MutexLock(self);
-	rc = lsm_csr_open(cursor->db->lsm, &cursor->cursor);
-	LSM_MutexLeave(self);
-
-	if(pylsm_error(rc)) return NULL;
-	cursor->state = PY_LSM_OPENED;
-
-	Py_INCREF(cursor->db);
+	LSMCursor* cursor = (LSMCursor*) LSMCursor_new(&LSMCursorType, self);
+	if (cursor == NULL) return NULL;
 
 	return (PyObject*) cursor;
 }
@@ -2005,7 +1994,7 @@ static LSMTransaction* LSM_transaction(LSM* self) {
 	LSM_begin(self);
 	if (PyErr_Occurred()) return NULL;
 
-	LSMTransaction* tx = (LSMTransaction*) LSMTransaction_new(&LSMTransactionType);
+	LSMTransaction* tx = (LSMTransaction*) LSMTransaction_new(&LSMTransactionType, self);
 	tx->tx_level = self->tx_level;
 	tx->db = self;
 
@@ -2282,15 +2271,18 @@ static PyTypeObject LSMType = {
 	.tp_as_mapping = &LSMTypeMapping,
 	.tp_as_sequence = &LSMTypeSequence,
 	.tp_getset = &LSMTypeGetSet,
-	.tp_iter = (getiterfunc) LSM_iter
+	.tp_iter = (getiterfunc) LSM_iter,
+	.tp_weaklistoffset = offsetof(LSM, weakrefs)
 };
 
 
-static PyObject* LSMCursor_new(PyTypeObject *type) {
+static PyObject* LSMCursor_new(PyTypeObject *type, LSM *db) {
+	if (pylsm_ensure_opened(db)) return NULL;
 	LSMCursor *self;
 
 	self = (LSMCursor *) type->tp_alloc(type, 0);
 	self->state = PY_LSM_INITIALIZED;
+	self->db = db;
 
 	int rc;
 
@@ -2770,7 +2762,7 @@ static PyTypeObject LSMCursorType = {
 };
 
 
-static PyObject* LSMTransaction_new(PyTypeObject *type) {
+static PyObject* LSMTransaction_new(PyTypeObject *type, LSM* db) {
 	LSMTransaction *self;
 
 	self = (LSMTransaction *) type->tp_alloc(type, 0);
