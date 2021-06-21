@@ -43,6 +43,7 @@ typedef struct {
 	lsm_compress lsm_compress;
 	lsm_env      *lsm_env;
 	lsm_mutex    *lsm_mutex;
+	PyObject*	 weakrefs;
 } LSM;
 
 
@@ -52,13 +53,16 @@ typedef struct {
 	lsm_cursor* cursor;
 	LSM*        db;
 	int 		seek_mode;
+	PyObject*	weakrefs;
 } LSMCursor;
 
 
 typedef struct {
 	PyObject_HEAD
 	LSM *db;
+	uint8_t	   state;
 	lsm_cursor *cursor;
+	PyObject*  weakrefs;
 } LSMIterView;
 
 
@@ -81,6 +85,7 @@ typedef struct {
 	char direction;
 
 	ssize_t counter;
+	PyObject* weakrefs;
 } LSMSliceView;
 
 
@@ -89,6 +94,7 @@ typedef struct {
 	LSM *db;
 	int tx_level;
 	int state;
+	PyObject* weakrefs;
 } LSMTransaction;
 
 
@@ -524,6 +530,8 @@ static void LSMIterView_dealloc(LSMIterView *self) {
 	Py_DECREF(self->db);
 	self->cursor = NULL;
 	self->db = NULL;
+
+	if (self->weakrefs != NULL) PyObject_ClearWeakRefs((PyObject *) self);
 }
 
 
@@ -728,7 +736,8 @@ static PyTypeObject LSMKeysType = {
 	.tp_dealloc = (destructor) LSMIterView_dealloc,
 	.tp_iter = (getiterfunc) LSMIterView_iter,
 	.tp_iternext = (iternextfunc) LSMKeysView_next,
-	.tp_as_sequence = &LSMKeysView_sequence
+	.tp_as_sequence = &LSMKeysView_sequence,
+	.tp_weaklistoffset = offsetof(LSMIterView, weakrefs)
 };
 
 
@@ -741,7 +750,8 @@ static PyTypeObject LSMItemsType = {
 	.tp_dealloc = (destructor) LSMIterView_dealloc,
 	.tp_iter = (getiterfunc) LSMIterView_iter,
 	.tp_iternext = (iternextfunc) LSMItemsView_next,
-	.tp_as_sequence = &LSMIterView_sequence
+	.tp_as_sequence = &LSMIterView_sequence,
+	.tp_weaklistoffset = offsetof(LSMIterView, weakrefs)
 };
 
 
@@ -784,6 +794,8 @@ static void LSMSliceView_dealloc(LSMSliceView *self) {
 	self->pStart = NULL;
 	self->pStop = NULL;
 	self->stop = NULL;
+
+	if (self->weakrefs != NULL) PyObject_ClearWeakRefs((PyObject *) self);
 }
 
 
@@ -941,7 +953,8 @@ static PyTypeObject LSMSliceType = {
 	.tp_flags = Py_TPFLAGS_DEFAULT,
 	.tp_dealloc = (destructor) LSMSliceView_dealloc,
 	.tp_iter = (getiterfunc) LSMSliceView_iter,
-	.tp_iternext = (iternextfunc) LSMSliceView_next
+	.tp_iternext = (iternextfunc) LSMSliceView_next,
+	.tp_weaklistoffset = offsetof(LSMSliceView, weakrefs)
 };
 
 
@@ -975,6 +988,7 @@ static void LSM_dealloc(LSM *self) {
 
 	if (self->logger != NULL) Py_DECREF(self->logger);
 	if (self->path != NULL) PyMem_Free(self->path);
+	if (self->weakrefs != NULL) PyObject_ClearWeakRefs((PyObject *) self);
 }
 
 
@@ -2255,6 +2269,8 @@ static void LSMCursor_dealloc(LSMCursor *self) {
 		Py_DECREF(self->db);
 		self->db = NULL;
 	}
+
+	if (self->weakrefs != NULL) PyObject_ClearWeakRefs((PyObject *) self);
 }
 
 
@@ -2700,7 +2716,8 @@ static PyTypeObject LSMCursorType = {
 	.tp_methods = LSMCursor_methods,
 	.tp_repr = (reprfunc) LSMCursor_repr,
 	.tp_iter = (getiterfunc) LSMCursor_iter,
-	.tp_iternext = (iternextfunc) LSMCursor_iter_next
+	.tp_iternext = (iternextfunc) LSMCursor_iter_next,
+	.tp_weaklistoffset = offsetof(LSMCursor, weakrefs)
 };
 
 
@@ -2806,7 +2823,8 @@ static PyTypeObject LSMTransactionType = {
 	.tp_itemsize = 0,
 	.tp_flags = Py_TPFLAGS_DEFAULT,
 	.tp_dealloc = (destructor) LSMTransaction_dealloc,
-	.tp_methods = LSMTransaction_methods
+	.tp_methods = LSMTransaction_methods,
+	.tp_weaklistoffset = offsetof(LSMTransaction, weakrefs)
 };
 
 
