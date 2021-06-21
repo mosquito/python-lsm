@@ -511,7 +511,6 @@ static int str_or_bytes_check(char binary, PyObject* pObj, const char** ppBuff, 
 static PyObject* LSMIterView_new(PyTypeObject *type) {
 	LSMIterView *self;
 	self = (LSMIterView *) type->tp_alloc(type, 0);
-	Py_INCREF(self);
 	return (PyObject *) self;
 }
 
@@ -527,7 +526,11 @@ static void LSMIterView_dealloc(LSMIterView *self) {
 		Py_END_ALLOW_THREADS
 	}
 
-	Py_DECREF(self->db);
+	if (self->state == PY_LSM_OPENED) {
+		self->state = PY_LSM_CLOSED;
+		Py_DECREF(self);
+	}
+
 	self->cursor = NULL;
 	self->db = NULL;
 
@@ -539,7 +542,8 @@ static int LSMIterView_init(LSMIterView *self, LSM* lsm) {
 	if (pylsm_ensure_opened(lsm)) return -1;
 
 	self->db = lsm;
-	Py_INCREF(self->db);
+
+	self->state = PY_LSM_INITIALIZED;
 	return 0;
 }
 
@@ -563,6 +567,14 @@ static int LSMIterView_len(LSMIterView* self) {
 static LSMIterView* LSMIterView_iter(LSMIterView* self) {
 	if (pylsm_ensure_opened(self->db)) return NULL;
 
+	if (self->state != PY_LSM_INITIALIZED) {
+		PyErr_SetString(PyExc_RuntimeError, "Can not call iter twice");
+		return NULL;
+	}
+
+	self->state = PY_LSM_OPENED;
+	Py_INCREF(self);
+
 	LSM_MutexLock(self->db);
 	if (pylsm_error(lsm_csr_open(self->db->lsm, &self->cursor))) {
 		LSM_MutexLeave(self->db);
@@ -581,12 +593,21 @@ static LSMIterView* LSMIterView_iter(LSMIterView* self) {
 
 static PyObject* LSMKeysView_next(LSMIterView *self) {
 	if (pylsm_ensure_opened(self->db)) return NULL;
+	if (self->state != PY_LSM_OPENED) {
+		PyErr_SetString(PyExc_RuntimeError, "Must call __iter__ before __next__");
+		return NULL;
+	}
 
 	PyObject *result;
 	char *pKey = NULL;
 	ssize_t nKey = 0;
 
 	if (!lsm_csr_valid(self->cursor)) {
+		if (self->state != PY_LSM_CLOSED) {
+			self->state = PY_LSM_CLOSED;
+			Py_DECREF(self);
+		}
+
 		PyErr_SetNone(PyExc_StopIteration);
 		return NULL;
 	}
@@ -623,6 +644,10 @@ static PyObject* LSMValuesView_next(LSMIterView *self) {
 	ssize_t nValue = 0;
 
 	if (!lsm_csr_valid(self->cursor)) {
+		if (self->state != PY_LSM_CLOSED) {
+			self->state = PY_LSM_CLOSED;
+			Py_DECREF(self);
+		}
 		PyErr_SetNone(PyExc_StopIteration);
 		return NULL;
 	}
@@ -661,6 +686,10 @@ static PyObject* LSMItemsView_next(LSMIterView *self) {
 	ssize_t nValue = 0;
 
 	if (!lsm_csr_valid(self->cursor)) {
+		if (self->state != PY_LSM_CLOSED) {
+			self->state = PY_LSM_CLOSED;
+			Py_DECREF(self);
+		}
 		PyErr_SetNone(PyExc_StopIteration);
 		return NULL;
 	}
@@ -764,14 +793,14 @@ static PyTypeObject LSMValuesType = {
 	.tp_dealloc = (destructor) LSMIterView_dealloc,
 	.tp_iter = (getiterfunc) LSMIterView_iter,
 	.tp_iternext = (iternextfunc) LSMValuesView_next,
-	.tp_as_sequence = &LSMIterView_sequence
+	.tp_as_sequence = &LSMIterView_sequence,
+	.tp_weaklistoffset = offsetof(LSMIterView, weakrefs)
 };
 
 
 static PyObject* LSMSliceView_new(PyTypeObject *type) {
 	LSMSliceView *self;
 	self = (LSMSliceView *) type->tp_alloc(type, 0);
-	Py_INCREF(self);
 	return (PyObject *) self;
 }
 
@@ -785,7 +814,6 @@ static void LSMSliceView_dealloc(LSMSliceView *self) {
 		LSM_MutexLeave(self->db);
 	}
 
-	if (self->db != NULL) Py_DECREF(self->db);
 	if (self->start != NULL) Py_DECREF(self->start);
 	if (self->stop != NULL) Py_DECREF(self->stop);
 
@@ -852,8 +880,6 @@ static int LSMSliceView_init(
 		Py_INCREF(self->start);
 	}
 
-	Py_INCREF(self->db);
-
 	self->state = PY_LSM_INITIALIZED;
 	return 0;
 }
@@ -861,6 +887,14 @@ static int LSMSliceView_init(
 
 static LSMSliceView* LSMSliceView_iter(LSMSliceView* self) {
 	if (pylsm_ensure_opened(self->db)) return NULL;
+
+	if (self->state != PY_LSM_INITIALIZED) {
+		PyErr_SetString(PyExc_RuntimeError, "Can not call __iter__ twice");
+		return NULL;
+	}
+
+	self->state = PY_LSM_OPENED;
+	Py_INCREF(self);
 
 	Py_BEGIN_ALLOW_THREADS
 	LSM_MutexLock(self->db);
@@ -883,6 +917,10 @@ static PyObject* LSMSliceView_next(LSMSliceView *self) {
 	}
 
 	if (!lsm_csr_valid(self->cursor)) {
+		if (self->state != PY_LSM_CLOSED) {
+			self->state = PY_LSM_CLOSED;
+			Py_DECREF(self);
+		}
 		PyErr_SetNone(PyExc_StopIteration);
 		return NULL;
 	}
@@ -903,6 +941,7 @@ static PyObject* LSMSliceView_next(LSMSliceView *self) {
 	Py_END_ALLOW_THREADS
 
 	if (rc == -1) {
+		if (self->state != PY_LSM_CLOSED) Py_DECREF(self);
 		self->state = PY_LSM_CLOSED;
 		PyErr_SetNone(PyExc_StopIteration);
 		return NULL;
@@ -911,6 +950,7 @@ static PyObject* LSMSliceView_next(LSMSliceView *self) {
 	if (pylsm_error(rc)) return NULL;
 
 	if (!lsm_csr_valid(self->cursor)) {
+		if (self->state != PY_LSM_CLOSED) Py_DECREF(self);
 		self->state = PY_LSM_CLOSED;
 		PyErr_SetNone(PyExc_StopIteration);
 		return NULL;
@@ -1337,10 +1377,10 @@ static PyObject* LSM_info(LSM *self) {
 static PyObject* LSM_ctx_enter(LSM *self) {
 	if (self->state == PY_LSM_OPENED) return (PyObject*) self;
 
+	Py_INCREF(self);
+
 	LSM_open(self);
 	if (PyErr_Occurred()) return NULL;
-
-	Py_INCREF(self);
 
 	return (PyObject*) self;
 }
@@ -2252,7 +2292,16 @@ static PyObject* LSMCursor_new(PyTypeObject *type) {
 	self = (LSMCursor *) type->tp_alloc(type, 0);
 	self->state = PY_LSM_INITIALIZED;
 
-	Py_INCREF(self);
+	int rc;
+
+	LSM_MutexLock(db);
+	rc = lsm_csr_open(self->db->lsm, &self->cursor);
+	LSM_MutexLeave(db);
+
+	if(pylsm_error(rc)) return NULL;
+	self->state = PY_LSM_OPENED;
+
+	Py_INCREF(self->db);
 
 	return (PyObject *) self;
 }
@@ -2727,7 +2776,8 @@ static PyObject* LSMTransaction_new(PyTypeObject *type) {
 	self = (LSMTransaction *) type->tp_alloc(type, 0);
 	self->state = PY_LSM_INITIALIZED;
 
-	Py_INCREF(self);
+	self->db = db;
+	Py_INCREF(self->db);
 
 	return (PyObject *) self;
 }
@@ -2736,20 +2786,12 @@ static PyObject* LSMTransaction_new(PyTypeObject *type) {
 static void LSMTransaction_dealloc(LSMTransaction *self) {
 	if (self->state == PY_LSM_CLOSED) return;
 	if (self->db != NULL) Py_DECREF(self->db);
+	if (self->weakrefs != NULL) PyObject_ClearWeakRefs((PyObject *) self);
 }
 
 
 static PyObject* LSMTransaction_ctx_enter(LSMTransaction *self) {
-	if (self->state == PY_LSM_OPENED) return (PyObject*) self;
-
-	LSM_begin(self->db);
-	if (PyErr_Occurred()) return NULL;
-
-	Py_INCREF(self);
-
-    self->tx_level = self->db->tx_level;
-    self->state = PY_LSM_OPENED;
-
+	if (pylsm_ensure_writable(self)) return NULL;
 	return (PyObject*) self;
 }
 
