@@ -915,9 +915,17 @@ static LSMSliceView* LSMSliceView_iter(LSMSliceView* self) {
 static PyObject* LSMSliceView_next(LSMSliceView *self) {
 	if (pylsm_ensure_opened(self->db)) return NULL;
 
-	if (self->state == PY_LSM_CLOSED) {
-		PyErr_SetNone(PyExc_StopIteration);
-		return NULL;
+	switch (self->state) {
+		case PY_LSM_OPENED:
+			break;
+		case PY_LSM_ITERATING:
+			break;
+		case PY_LSM_CLOSED:
+			PyErr_SetNone(PyExc_StopIteration);
+			return NULL;
+		default:
+			PyErr_SetString(PyExc_RuntimeError, "Must call __iter__ before __next__");
+			return NULL;
 	}
 
 	if (!lsm_csr_valid(self->cursor)) {
@@ -934,8 +942,8 @@ static PyObject* LSMSliceView_next(LSMSliceView *self) {
 	Py_BEGIN_ALLOW_THREADS
 	LSM_MutexLock(self->db);
 
-	if (self->state == PY_LSM_INITIALIZED) {
-		self->state = PY_LSM_OPENED;
+	if (self->state == PY_LSM_OPENED) {
+		self->state = PY_LSM_ITERATING;
 		rc = pylsm_slice_first(self);
 	} else {
 		rc = pylsm_slice_next(self);
