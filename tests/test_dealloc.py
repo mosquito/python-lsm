@@ -1,6 +1,6 @@
 import gc
 import tracemalloc
-from time import monotonic, sleep
+from concurrent.futures import Future
 from typing import Any
 from weakref import finalize
 
@@ -29,16 +29,10 @@ class DeallocCases:
         tracemalloc.stop()
         gc.collect()
 
-    def test_weakref(self, instance_maker):
-        state = {}
-        finalize(instance_maker(), lambda: state.update({"ok": True}))
-
-        start = monotonic()
-
-        while not state.get("ok"):
-            if monotonic() - start > self.TIMEOUT:
-                raise TimeoutError
-            sleep(0.005)
+    def test_weakref_finalize(self, instance_maker):
+        future = Future()
+        finalize(instance_maker(), lambda: future.set_result(True))
+        future.result(timeout=1)
 
 
 class TestDeallocClass(DeallocCases):
