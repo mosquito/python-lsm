@@ -12,15 +12,17 @@ def test_multiple_open(subtests, tmp_path):
         'binary': False,
     }
 
+    count = 2048
+
     for prefix in ("k", "z", "a", "f", "1"):
         with LSM(str(tmp_path / "test.lsm"), **kwargs) as db:
-            for i in range(1024):
+            for i in range(count):
                 db['{}{}'.format(prefix, i)] = str(i)
 
     with LSM(str(tmp_path / "test.lsm"), binary=False, readonly=True) as db:
         for prefix in ("k", "z", "a", "f", "1"):
             with subtests.test(msg="prefix {}".format(i)):
-                for i in range(1024):
+                for i in range(count):
                     assert db['{}{}'.format(prefix, i)] == str(i)
 
                 for key, value in db.items():

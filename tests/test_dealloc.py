@@ -1,5 +1,3 @@
-import gc
-import tracemalloc
 from concurrent.futures import Future
 from typing import Any
 from weakref import finalize
@@ -11,24 +9,6 @@ import pytest
 # noinspection PyMethodMayBeStatic,SpellCheckingInspection
 class DeallocCases:
     TIMEOUT = 1
-
-    def test_tracemalloc(self, instance_maker):
-        tracemalloc.start()
-        snap_before = tracemalloc.take_snapshot()
-        instance_maker()
-        gc.collect()
-        snap_after = tracemalloc.take_snapshot()
-
-        filters = (
-            tracemalloc.Filter(True, lsm.__file__),
-        )
-
-        snap_after = snap_after.filter_traces(filters)
-        snap_before = snap_before.filter_traces(filters)
-
-        assert not snap_after.compare_to(snap_before, 'lineno')
-        tracemalloc.stop()
-        gc.collect()
 
     def test_weakref_finalize(self, instance_maker):
         future = Future()
@@ -219,4 +199,78 @@ class TestFilledAndCheckLSMDeallocCtx(DeallocCases):
                 assert key == value, (key, value)
 
             return db.items()
+        return maker
+
+
+class TestFilledIterLSMDealloc(DeallocCases):
+    @pytest.fixture(params=["none", "lz4", "zstd"])
+    def instance_maker(self, request, tmp_path, filler) -> Any:
+        def maker():
+            db = lsm.LSM(
+                tmp_path / ("db.lsm." + request.param),
+                compress=request.param
+            )
+            db.open()
+            filler(db)
+            return iter(db)
+        return maker
+
+
+class TestFilledIterLSMKeysDeallocCtx(DeallocCases):
+    @pytest.fixture(params=["none", "lz4", "zstd"])
+    def instance_maker(self, request, tmp_path, filler) -> Any:
+        def maker():
+            db = lsm.LSM(
+                tmp_path / ("db.lsm." + request.param),
+                compress=request.param
+            )
+            db.open()
+            filler(db)
+            return iter(db.keys())
+        return maker
+
+
+class TestFilledIterLSMValuesDeallocCtx(DeallocCases):
+    @pytest.fixture(params=["none", "lz4", "zstd"])
+    def instance_maker(self, request, tmp_path, filler) -> Any:
+        def maker():
+            db = lsm.LSM(
+                tmp_path / ("db.lsm." + request.param),
+                compress=request.param
+            )
+            db.open()
+            filler(db)
+            return iter(db.values())
+        return maker
+
+
+class TestFilledIterLSMItemsDeallocCtx(DeallocCases):
+    @pytest.fixture(params=["none", "lz4", "zstd"])
+    def instance_maker(self, request, tmp_path, filler) -> Any:
+        def maker():
+            db = lsm.LSM(
+                tmp_path / ("db.lsm." + request.param),
+                compress=request.param
+            )
+            db.open()
+            filler(db)
+            return iter(db.items())
+        return maker
+
+
+class TestFilledIterAndCheckLSMDeallocCtx(DeallocCases):
+    @pytest.fixture(params=["none", "lz4", "zstd"])
+    def instance_maker(self, request, tmp_path, filler) -> Any:
+        def maker():
+            db = lsm.LSM(
+                tmp_path / ("db.lsm." + request.param),
+                compress=request.param
+            )
+            db.open()
+            filler(db)
+
+            for key, value in db.items():
+                assert key == value, (key, value)
+
+            return iter(db.items())
         return maker

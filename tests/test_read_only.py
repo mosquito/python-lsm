@@ -9,7 +9,7 @@ from lsm import LSM
 def db(request, tmp_path: Path):
     db_path = tmp_path / ("readonly.lsm" + request.param)
     with LSM(db_path, binary=False, multiple_processes=False) as db:
-        db.update({"k{}".format(i): str(i) for i in range(10000)})
+        db.update({"k{}".format(i): str(i) for i in range(100000)})
 
     with LSM(
         db_path, readonly=True,
