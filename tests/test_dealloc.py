@@ -8,6 +8,7 @@ import lsm
 import pytest
 
 
+# noinspection PyMethodMayBeStatic,SpellCheckingInspection
 class DeallocCases:
     TIMEOUT = 1
 
