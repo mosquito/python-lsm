@@ -632,13 +632,7 @@ static PyObject* LSMKeysView_next(LSMIterView *self) {
 
 	LSM_MutexLeave(self->db);
 
-	if (self->db->binary) {
-		result = PyBytes_FromStringAndSize(pKey, nKey);
-	} else {
-		result = PyUnicode_FromStringAndSize(pKey, nKey);
-	}
-
-	return result;
+	return Py_BuildValue(self->db->binary ? "y#": "s#", pKey, nKey);
 }
 
 
@@ -672,13 +666,7 @@ static PyObject* LSMValuesView_next(LSMIterView *self) {
 
 	LSM_MutexLeave(self->db);
 
-	if (self->db->binary) {
-		result = PyBytes_FromStringAndSize(pValue, nValue);
-	} else {
-		result = PyUnicode_FromStringAndSize(pValue, nValue);
-	}
-
-	return result;
+	return Py_BuildValue(self->db->binary ? "y#": "s#", pValue, nValue);
 }
 
 
@@ -2465,22 +2453,14 @@ static PyObject* LSMCursor_key(LSMCursor *self) {
 	if (pylsm_ensure_csr_opened(self)) return NULL;
 	if(!lsm_csr_valid(self->cursor)) { Py_RETURN_NONE; }
 
-	char* key_buff = NULL;
-	int key_len = 0;
+	char* pKey = NULL;
+	int nKey = 0;
 
 	LSM_MutexLock(self->db);
-	lsm_csr_key(self->cursor, (const void **)&key_buff, &key_len);
+	lsm_csr_key(self->cursor, (const void **)&pKey, &nKey);
 	LSM_MutexLeave(self->db);
 
-	PyObject* key;
-
-	if (self->db->binary) {
-		key = PyBytes_FromStringAndSize(key_buff, key_len);
-	} else {
-		key = PyUnicode_FromStringAndSize(key_buff, key_len);
-	}
-
-	return key;
+	return Py_BuildValue(self->db->binary ? "y#": "s#", pKey, nKey);
 }
 
 
@@ -2499,14 +2479,7 @@ static PyObject* LSMCursor_value(LSMCursor *self) {
 	lsm_csr_value(self->cursor, (const void **)&pValue, &nValue);
 	LSM_MutexLeave(self->db);
 
-	PyObject* value;
-
-	if (self->db->binary) {
-		value = PyBytes_FromStringAndSize(pValue, nValue);
-	} else {
-		value = PyUnicode_FromStringAndSize(pValue, nValue);
-	}
-	return value;
+	return Py_BuildValue(self->db->binary ? "y#": "s#", pValue, nValue);
 }
 
 
