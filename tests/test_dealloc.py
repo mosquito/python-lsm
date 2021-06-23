@@ -230,6 +230,20 @@ class TestFilledIterLSMKeysDeallocCtx(DeallocCases):
         return maker
 
 
+class TestFilledSliceLSMKeysDeallocCtx(DeallocCases):
+    @pytest.fixture(params=["none", "lz4", "zstd"])
+    def instance_maker(self, request, tmp_path, filler) -> Any:
+        def maker():
+            db = lsm.LSM(
+                tmp_path / ("db.lsm." + request.param),
+                compress=request.param
+            )
+            db.open()
+            filler(db)
+            return iter(db.keys())
+        return maker
+
+
 class TestFilledIterLSMValuesDeallocCtx(DeallocCases):
     @pytest.fixture(params=["none", "lz4", "zstd"])
     def instance_maker(self, request, tmp_path, filler) -> Any:
@@ -240,7 +254,7 @@ class TestFilledIterLSMValuesDeallocCtx(DeallocCases):
             )
             db.open()
             filler(db)
-            return iter(db.values())
+            return iter(db[::-1])
         return maker
 
 

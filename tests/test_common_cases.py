@@ -101,3 +101,24 @@ def test_insert_select(subtests, db):
         assert len(db) == 100
         assert db['k19'] == '19'
 
+
+@pytest.mark.parametrize("comp", ["none", "lz4", "zstd"])
+def test_info(comp, tmp_path):
+    with LSM(tmp_path / ("test.lsm." + comp), compress=comp,
+             binary=False) as db:
+        for i in map(str, range(10000)):
+            db[i] = i
+
+        info = db.info()
+        assert 'checkpoint_size_result' in info
+        assert 'nread' in info
+        assert 'nwrite' in info
+        assert 'tree_size' in info
+
+    with LSM(tmp_path / ("test.lsm." + comp), binary=False,
+             compress=comp, readonly=True) as db:
+        info = db.info()
+        assert 'checkpoint_size_result' not in info
+        assert 'nread' in info
+        assert 'nwrite' not in info
+        assert 'tree_size' not in info
