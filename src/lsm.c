@@ -679,13 +679,11 @@ static PyObject* pylsm_items_fetch(LSMIterView* self) {
 	if (pylsm_error(lsm_csr_key(self->cursor, &pKey, &nKey))) return NULL;
 	if (pylsm_error(lsm_csr_value(self->cursor, &pValue, &nValue))) return NULL;
 
-	PyObject* result_tuple = Py_BuildValue(
+	return Py_BuildValue(
 		self->db->binary ? "(y#y#)" : "s#s#",
 		pKey, nKey,
 		pValue, nValue
 	);
-
-	return result_tuple;
 }
 
 
@@ -958,13 +956,11 @@ static PyObject* LSMSliceView_next(LSMSliceView *self) {
 	if (rc = pylsm_error(lsm_csr_key(self->cursor, &pKey, &nKey))) return rc;
 	if (rc = pylsm_error(lsm_csr_value(self->cursor, &pValue, &nValue))) return rc;
 
-	PyObject* result_tuple = Py_BuildValue(
+	return Py_BuildValue(
 		self->db->binary ? "(y#y#)" : "s#s#",
 		pKey, nKey,
 		pValue, nValue
 	);
-
-	return result_tuple;
 }
 
 
@@ -1312,46 +1308,55 @@ static PyObject* LSM_close(LSM *self) {
 
 
 static PyObject* LSM_info(LSM *self) {
-	if (pylsm_ensure_writable(self)) return NULL;
+	if (pylsm_ensure_opened(self)) return NULL;
 
-	int32_t nwrite; int nwrite_result;
-	int32_t nread; int nread_result;
-	int checkpoint_size, checkpoint_size_result;
-	int tree_size_old, tree_size_current, tree_size_result;
+	int nwrite_result = 0,
+		nread_result = 0,
+		checkpoint_size_result = 0;
+
+	int nwrite = 0,
+	 	nread = 0,
+	 	checkpoint_size = 0,
+		tree_size_old = 0,
+		tree_size_current = 0,
+		tree_size_result = 0;
 
 	Py_BEGIN_ALLOW_THREADS
 	LSM_MutexLock(self);
-	nwrite_result = lsm_info(
-		self->lsm, LSM_INFO_NWRITE, &nwrite
-	);
+
 	nread_result = lsm_info(
 		self->lsm, LSM_INFO_NREAD, &nread
 	);
-	checkpoint_size_result = lsm_info(
+
+	if (!self->readonly) nwrite_result = lsm_info(
+		self->lsm, LSM_INFO_NWRITE, &nwrite
+	);
+
+	if (!self->readonly) checkpoint_size_result = lsm_info(
 		self->lsm, LSM_INFO_CHECKPOINT_SIZE, &checkpoint_size
 	);
-	tree_size_result = lsm_info(
+
+	if (!self->readonly) tree_size_result = lsm_info(
 		self->lsm, LSM_INFO_TREE_SIZE, &tree_size_old, &tree_size_current
 	);
+
 	LSM_MutexLeave(self);
 	Py_END_ALLOW_THREADS
 
-	if (pylsm_error(nwrite_result)) return NULL;
 	if (pylsm_error(nread_result)) return NULL;
+	if (self->readonly) return Py_BuildValue("{si}", "nread", nread);
+
+	if (pylsm_error(nwrite_result)) return NULL;
 	if (pylsm_error(checkpoint_size_result)) return NULL;
 	if (pylsm_error(tree_size_result)) return NULL;
 
-	PyObject *result = PyDict_New();
-
-	if (PyDict_SetItemString(result, "nwrite", PyLong_FromLong(nwrite))) return NULL;
-	if (PyDict_SetItemString(result, "nread", PyLong_FromLongLong(nread))) return NULL;
-	if (PyDict_SetItemString(result, "checkpoint_size_result", PyLong_FromLong(checkpoint_size))) return NULL;
-
-	PyObject *tree_size = PyDict_New();
-	if (PyDict_SetItemString(tree_size, "old", PyLong_FromLong(tree_size_old))) return NULL;
-	if (PyDict_SetItemString(tree_size, "current", PyLong_FromLong(tree_size_current))) return NULL;
-	if (PyDict_SetItemString(result, "tree_size", tree_size)) return NULL;
-	return result;
+	return Py_BuildValue(
+		"{sisisis{sisi}}",
+		"nwrite", nwrite,
+		"nread", nread,
+		"checkpoint_size_result", checkpoint_size,
+		"tree_size", "old", tree_size_old, "current", tree_size_current
+	);
 }
 
 
@@ -1404,7 +1409,7 @@ static PyObject* LSM_work(LSM *self, PyObject *args, PyObject *kwds) {
 	Py_END_ALLOW_THREADS
 
 	if (pylsm_error(result)) return NULL;
-	return PyLong_FromLong(total_written);
+	return Py_BuildValue("i", total_written);
 }
 
 
@@ -1436,7 +1441,7 @@ static PyObject* LSM_checkpoint(LSM *self) {
 	Py_END_ALLOW_THREADS
 
 	if (pylsm_error(result)) return NULL;
-	return PyLong_FromLong(bytes_written);
+	return Py_BuildValue("i", bytes_written);
 }
 
 static PyObject* LSM_cursor(LSM *self, PyObject *args, PyObject *kwds) {
@@ -1789,9 +1794,9 @@ static PyObject* LSM_compress_get(LSM* self) {
 		case PY_LSM_COMPRESSOR_NONE:
 			Py_RETURN_NONE;
 		case PY_LSM_COMPRESSOR_LZ4:
-			return PyUnicode_FromString("lz4");
+			return Py_BuildValue("s", "lz4");
 		case PY_LSM_COMPRESSOR_ZSTD:
-			return PyUnicode_FromString("zstd");
+			return Py_BuildValue("s", "zstd");
 	}
 
 	PyErr_SetString(PyExc_RuntimeError, "invalid compressor");
@@ -2414,7 +2419,7 @@ static PyObject* LSMCursor_compare(LSMCursor *self, PyObject* args, PyObject* kw
 	LSM_MutexLeave(self->db);
 
 	if (pylsm_error(result)) return NULL;
-	return PyLong_FromLong(cmp_result);
+	return Py_BuildValue("i", cmp_result);
 }
 
 static PyObject* LSMCursor_retrieve(LSMCursor *self) {
@@ -2435,13 +2440,11 @@ static PyObject* LSMCursor_retrieve(LSMCursor *self) {
 	lsm_csr_value(self->cursor, (const void **)&pValue, &nValue);
 	LSM_MutexLeave(self->db);
 
-	PyObject* result_tuple = Py_BuildValue(
+	return Py_BuildValue(
 		self->db->binary ? "(y#y#)" : "s#s#",
 		pKey, nKey,
 		pValue, nValue
 	);
-
-	return result_tuple;
 }
 
 
@@ -2607,13 +2610,11 @@ static PyObject* LSMCursor_iter_next(LSMCursor* self) {
 	LSM_MutexLeave(self->db);
 	Py_END_ALLOW_THREADS
 
-	PyObject* result_tuple = Py_BuildValue(
+	return Py_BuildValue(
 		self->db->binary ? "(y#y#)" : "s#s#",
 		pKey, nKey,
 		pValue, nValue
 	);
-
-	return result_tuple;
 }
 
 
