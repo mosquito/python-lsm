@@ -574,12 +574,16 @@ static LSMIterView* LSMIterView_iter(LSMIterView* self) {
 	if (pylsm_ensure_opened(self->db)) return NULL;
 
 	if (self->state != PY_LSM_INITIALIZED) {
-		PyErr_SetString(PyExc_RuntimeError, "Can not call iter twice");
+		Py_INCREF(self);
+		return self;
+	}
+
+	if (self->state == PY_LSM_OPENED) {
+		PyErr_SetString(PyExc_RuntimeError, "Can not modify started iterator");
 		return NULL;
 	}
 
 	self->state = PY_LSM_OPENED;
-	Py_INCREF(self);
 
 	LSM_MutexLock(self->db);
 	if (pylsm_error(lsm_csr_open(self->db->lsm, &self->cursor))) {
@@ -594,6 +598,7 @@ static LSMIterView* LSMIterView_iter(LSMIterView* self) {
 
 	LSM_MutexLeave(self->db);
 
+	Py_INCREF(self);
 	return self;
 }
 
@@ -873,12 +878,16 @@ static LSMSliceView* LSMSliceView_iter(LSMSliceView* self) {
 	if (pylsm_ensure_opened(self->db)) return NULL;
 
 	if (self->state != PY_LSM_INITIALIZED) {
-		PyErr_SetString(PyExc_RuntimeError, "Can not call __iter__ twice");
+		Py_INCREF(self);
+		return self;
+	}
+
+	if (self->state == PY_LSM_OPENED) {
+		PyErr_SetString(PyExc_RuntimeError, "Can not modify started iterator");
 		return NULL;
 	}
 
 	self->state = PY_LSM_OPENED;
-	Py_INCREF(self);
 
 	Py_BEGIN_ALLOW_THREADS
 	LSM_MutexLock(self->db);
@@ -888,6 +897,7 @@ static LSMSliceView* LSMSliceView_iter(LSMSliceView* self) {
 	LSM_MutexLeave(self->db);
 	Py_END_ALLOW_THREADS
 
+	Py_INCREF(self);
 	return self;
 }
 
