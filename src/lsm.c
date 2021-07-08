@@ -1649,14 +1649,18 @@ static PyObject* LSM_getitem(LSM *self, PyObject *arg) {
 			"Key %R was not found",
 			key
 		);
+		if (pValue != NULL) free(pValue);
 		return NULL;
 	}
 
-	if (pylsm_error(result)) return NULL;
+	if (pylsm_error(result)) {
+		if (pValue != NULL) free(pValue);
+		return NULL;
+	}
 
 	PyObject* py_value = Py_BuildValue(self->binary ? "y#" : "s#", pValue, nValue);
 
-	free(pValue);
+	if (pValue != NULL) free(pValue);
 
 	return py_value;
 }
