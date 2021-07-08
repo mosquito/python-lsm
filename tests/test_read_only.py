@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 from lsm import LSM
 
+from tests import comp_algo
 
 
 @pytest.fixture(params=comp_algo, ids=comp_algo)

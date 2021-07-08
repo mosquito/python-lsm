@@ -1,1 +1,1 @@
-comp_algo = ["none", "lz4", "zstd", "pass"]
+comp_algo = ["none", "lz4", "zstd"]
