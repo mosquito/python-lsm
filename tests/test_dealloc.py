@@ -7,12 +7,15 @@ import pytest
 
 
 # noinspection PyMethodMayBeStatic,SpellCheckingInspection
+from tests import comp_algo
+
+
 class DeallocCases:
     TIMEOUT = 1
 
     def test_weakref_finalize(self, instance_maker):
         future = Future()
-        finalize(instance_maker(), lambda: future.set_result(True))
+        finalize(instance_maker(), future.set_result, True)
         future.result(timeout=1)
 
 
@@ -32,7 +35,7 @@ class TestDeallocClass(DeallocCases):
 
 
 class TestLSMDealloc(DeallocCases):
-    @pytest.fixture(params=["none", "lz4", "zstd"])
+    @pytest.fixture(params=comp_algo)
     def instance_maker(self, request, tmp_path) -> Any:
         def maker():
             return lsm.LSM(
@@ -43,7 +46,7 @@ class TestLSMDealloc(DeallocCases):
 
 
 class TestLSMKeysDeallocCtx(DeallocCases):
-    @pytest.fixture(params=["none", "lz4", "zstd"])
+    @pytest.fixture(params=comp_algo)
     def instance_maker(self, request, tmp_path) -> Any:
         def maker():
             db = lsm.LSM(
@@ -56,7 +59,7 @@ class TestLSMKeysDeallocCtx(DeallocCases):
 
 
 class TestLSMValuesDeallocCtx(DeallocCases):
-    @pytest.fixture(params=["none", "lz4", "zstd"])
+    @pytest.fixture(params=comp_algo)
     def instance_maker(self, request, tmp_path) -> Any:
         def maker():
             db = lsm.LSM(
@@ -69,7 +72,7 @@ class TestLSMValuesDeallocCtx(DeallocCases):
 
 
 class TestLSMItemsDeallocCtx(DeallocCases):
-    @pytest.fixture(params=["none", "lz4", "zstd"])
+    @pytest.fixture(params=comp_algo)
     def instance_maker(self, request, tmp_path) -> Any:
         def maker():
             db = lsm.LSM(
@@ -82,7 +85,7 @@ class TestLSMItemsDeallocCtx(DeallocCases):
 
 
 class TestLSMSliceDeallocCtx(DeallocCases):
-    @pytest.fixture(params=["none", "lz4", "zstd"])
+    @pytest.fixture(params=comp_algo)
     def instance_maker(self, request, tmp_path) -> Any:
         def maker():
             db = lsm.LSM(
@@ -95,7 +98,7 @@ class TestLSMSliceDeallocCtx(DeallocCases):
 
 
 class TestLSMCursorDeallocCtx(DeallocCases):
-    @pytest.fixture(params=["none", "lz4", "zstd"])
+    @pytest.fixture(params=comp_algo)
     def instance_maker(self, request, tmp_path) -> Any:
         def maker():
             db = lsm.LSM(
@@ -108,7 +111,7 @@ class TestLSMCursorDeallocCtx(DeallocCases):
 
 
 class TestLSMTransactionDeallocCtx(DeallocCases):
-    @pytest.fixture(params=["none", "lz4", "zstd"])
+    @pytest.fixture(params=comp_algo)
     def instance_maker(self, request, tmp_path) -> Any:
         def maker():
             db = lsm.LSM(
@@ -129,7 +132,7 @@ def filler(request):
 
 
 class TestFilledLSMDealloc(DeallocCases):
-    @pytest.fixture(params=["none", "lz4", "zstd"])
+    @pytest.fixture(params=comp_algo)
     def instance_maker(self, request, tmp_path, filler) -> Any:
         def maker():
             db = lsm.LSM(
@@ -143,7 +146,7 @@ class TestFilledLSMDealloc(DeallocCases):
 
 
 class TestFilledLSMKeysDeallocCtx(DeallocCases):
-    @pytest.fixture(params=["none", "lz4", "zstd"])
+    @pytest.fixture(params=comp_algo)
     def instance_maker(self, request, tmp_path, filler) -> Any:
         def maker():
             db = lsm.LSM(
@@ -157,7 +160,7 @@ class TestFilledLSMKeysDeallocCtx(DeallocCases):
 
 
 class TestFilledLSMValuesDeallocCtx(DeallocCases):
-    @pytest.fixture(params=["none", "lz4", "zstd"])
+    @pytest.fixture(params=comp_algo)
     def instance_maker(self, request, tmp_path, filler) -> Any:
         def maker():
             db = lsm.LSM(
@@ -171,7 +174,7 @@ class TestFilledLSMValuesDeallocCtx(DeallocCases):
 
 
 class TestFilledLSMItemsDeallocCtx(DeallocCases):
-    @pytest.fixture(params=["none", "lz4", "zstd"])
+    @pytest.fixture(params=comp_algo)
     def instance_maker(self, request, tmp_path, filler) -> Any:
         def maker():
             db = lsm.LSM(
@@ -185,7 +188,7 @@ class TestFilledLSMItemsDeallocCtx(DeallocCases):
 
 
 class TestFilledAndCheckLSMDeallocCtx(DeallocCases):
-    @pytest.fixture(params=["none", "lz4", "zstd"])
+    @pytest.fixture(params=comp_algo)
     def instance_maker(self, request, tmp_path, filler) -> Any:
         def maker():
             db = lsm.LSM(
@@ -203,7 +206,7 @@ class TestFilledAndCheckLSMDeallocCtx(DeallocCases):
 
 
 class TestFilledIterLSMDealloc(DeallocCases):
-    @pytest.fixture(params=["none", "lz4", "zstd"])
+    @pytest.fixture(params=comp_algo)
     def instance_maker(self, request, tmp_path, filler) -> Any:
         def maker():
             db = lsm.LSM(
@@ -217,7 +220,7 @@ class TestFilledIterLSMDealloc(DeallocCases):
 
 
 class TestFilledIterLSMKeysDeallocCtx(DeallocCases):
-    @pytest.fixture(params=["none", "lz4", "zstd"])
+    @pytest.fixture(params=comp_algo)
     def instance_maker(self, request, tmp_path, filler) -> Any:
         def maker():
             db = lsm.LSM(
@@ -231,7 +234,7 @@ class TestFilledIterLSMKeysDeallocCtx(DeallocCases):
 
 
 class TestFilledSliceLSMKeysDeallocCtx(DeallocCases):
-    @pytest.fixture(params=["none", "lz4", "zstd"])
+    @pytest.fixture(params=comp_algo)
     def instance_maker(self, request, tmp_path, filler) -> Any:
         def maker():
             db = lsm.LSM(
@@ -245,7 +248,7 @@ class TestFilledSliceLSMKeysDeallocCtx(DeallocCases):
 
 
 class TestFilledIterLSMValuesDeallocCtx(DeallocCases):
-    @pytest.fixture(params=["none", "lz4", "zstd"])
+    @pytest.fixture(params=comp_algo)
     def instance_maker(self, request, tmp_path, filler) -> Any:
         def maker():
             db = lsm.LSM(
@@ -259,7 +262,7 @@ class TestFilledIterLSMValuesDeallocCtx(DeallocCases):
 
 
 class TestFilledIterLSMItemsDeallocCtx(DeallocCases):
-    @pytest.fixture(params=["none", "lz4", "zstd"])
+    @pytest.fixture(params=comp_algo)
     def instance_maker(self, request, tmp_path, filler) -> Any:
         def maker():
             db = lsm.LSM(
@@ -273,7 +276,7 @@ class TestFilledIterLSMItemsDeallocCtx(DeallocCases):
 
 
 class TestFilledIterAndCheckLSMDeallocCtx(DeallocCases):
-    @pytest.fixture(params=["none", "lz4", "zstd"])
+    @pytest.fixture(params=comp_algo)
     def instance_maker(self, request, tmp_path, filler) -> Any:
         def maker():
             db = lsm.LSM(

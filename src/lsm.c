@@ -124,6 +124,7 @@ enum {
 };
 
 enum {
+	PY_LSM_COMPRESSOR_EMPTY = LSM_COMPRESSION_EMPTY,
 	PY_LSM_COMPRESSOR_NONE = LSM_COMPRESSION_NONE,
 	PY_LSM_COMPRESSOR_LZ4 = 1024,
 	PY_LSM_COMPRESSOR_ZSTD = 2048,
@@ -1149,7 +1150,7 @@ static int LSM_init(LSM *self, PyObject *args, PyObject *kwds) {
 	}
 
 	if (compress == Py_None) {
-		compressor_id = PY_LSM_COMPRESSOR_NONE;
+		compressor_id = PY_LSM_COMPRESSOR_EMPTY;
 	} else if (!PyUnicode_Check(compress)) {
 		PyErr_Format(PyExc_ValueError, "str expected not %R", PyObject_Type(compress));
 		return -1;
@@ -1193,7 +1194,7 @@ static int LSM_init(LSM *self, PyObject *args, PyObject *kwds) {
 		return -1;
 	}
 
-	if (compressor_id != PY_LSM_COMPRESSOR_NONE) self->compressed = 1;
+	if (compressor_id > PY_LSM_COMPRESSOR_NONE) self->compressed = 1;
 
 	if (self->logger != NULL && !PyCallable_Check(self->logger)) {
 		PyErr_Format(PyExc_ValueError, "object %R is not callable", self->logger);

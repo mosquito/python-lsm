@@ -5,7 +5,8 @@ import pytest
 from lsm import LSM
 
 
-@pytest.fixture(params=["none", "lz4", "zstd"], ids=["none", "lz4", "zstd"])
+
+@pytest.fixture(params=comp_algo, ids=comp_algo)
 def db(request, tmp_path: Path):
     db_path = tmp_path / ("readonly.lsm" + request.param)
     with LSM(db_path, binary=False, multiple_processes=False) as db:

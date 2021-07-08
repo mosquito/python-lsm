@@ -3,8 +3,10 @@ import struct
 import pytest
 from lsm import LSM, SEEK_LE, SEEK_GE, SEEK_EQ
 
+from tests import comp_algo
 
-@pytest.fixture(params=["none", "lz4", "zstd"])
+
+@pytest.fixture(params=comp_algo)
 def db(request, tmp_path):
     with LSM(
         tmp_path / ("db.lsm" + request.param),
@@ -14,7 +16,7 @@ def db(request, tmp_path):
         yield db
 
 
-@pytest.fixture(params=["none", "lz4", "zstd"])
+@pytest.fixture(params=comp_algo)
 def db_binary(request, tmp_path):
     with LSM(
         tmp_path / ("db.lsm" + request.param),
@@ -102,7 +104,7 @@ def test_insert_select(subtests, db):
         assert db['k19'] == '19'
 
 
-@pytest.mark.parametrize("comp", ["none", "lz4", "zstd"])
+@pytest.mark.parametrize("comp", comp_algo)
 def test_info(comp, tmp_path):
     with LSM(tmp_path / ("test.lsm." + comp), compress=comp,
              binary=False) as db:
