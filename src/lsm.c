@@ -1018,7 +1018,7 @@ static int LSM_init(LSM *self, PyObject *args, PyObject *kwds) {
 	self->autoflush = 1024;
 	self->automerge = 4;
 	self->autowork = 1;
-	self->mmap = (IS_64_BIT ? 1 : 32768);
+	self->mmap = 0;
 	self->block_size = 1024;
 	self->max_freelist = 24;
 	self->multiple_processes = 1;
