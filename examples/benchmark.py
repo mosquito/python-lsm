@@ -6,8 +6,9 @@ from argparse import ArgumentParser, Action
 from glob import glob
 from multiprocessing import cpu_count
 from random import shuffle
-from threading import local
+from threading import local, RLock
 from typing import Union
+from pathlib import Path
 
 import lsm
 from multiprocessing.pool import ThreadPool
@@ -179,18 +180,59 @@ def get_value(idx) -> Union[bytes, str]:
     }).encode()
 
 
-def fill_db(path, *, n, pool_size, **kwargs):
+DATA_HEADER = struct.Struct("!I")
+
+
+def gen_data(path, n):
+    with open(path, "a+b") as fp:
+        fp.seek(0)
+        head = fp.read(DATA_HEADER.size)
+
+        if len(head) == DATA_HEADER.size and DATA_HEADER.unpack(head)[0] == n:
+            print("Using previously generated file. Skipping")
+            return
+
+        fp.truncate(0)
+        fp.flush()
+
+        fp.write(b"\x00" * DATA_HEADER.size)
+
+        for i in tqdm(range(n), total=n, desc="Generate data"):
+            value = get_value(i)
+            fp.write(DATA_HEADER.pack(len(value)))
+            fp.write(value)
+
+        fp.seek(0)
+        os.pwrite(fp.fileno(), DATA_HEADER.pack(n), 0)
+        fp.flush()
+
+
+def fill_db(path, *, pool_size, data_file, **kwargs):
     print("Opening:", path, "with", kwargs)
-    with ThreadPool(pool_size) as pool, lsm.LSM(path, **kwargs) as db:
+    with ThreadPool(pool_size) as pool, \
+         lsm.LSM(path, **kwargs) as db, \
+         open(data_file, "rb") as fp:
+
+        n = DATA_HEADER.unpack(fp.read(DATA_HEADER.size))[0]
+        read_lock = RLock()
 
         def insert(i):
-            db[get_key(i)] = get_value(i)
+            with read_lock:
+                line = fp.read(
+                    DATA_HEADER.unpack(
+                        fp.read(DATA_HEADER.size)
+                    )[0]
+                )
+
+            db[get_key(i)] = line
 
         for _ in tqdm(
             pool.imap_unordered(insert, range(n)),
             desc=f"insert {kwargs.get('compress', 'none')}", total=n
         ):
             pass
+
+        db.work(complete=True)
 
 
 def select_thread_pool(path, *, keys_iter, keys_total, pool_size, **kwargs):
@@ -296,16 +338,21 @@ def main():
             print("Removing: ", file_name)
             os.remove(file_name)
 
+    data_path = Path(arguments.path).parent / "data.json"
+
     def fill_job(item):
         path, kwargs = item
         return fill_db(
             path,
             pool_size=arguments.pool_size,
-            n=arguments.count,
+            data_file=data_path,
             **kwargs
         )
 
     if run_insert:
+        print("Prepare data")
+        gen_data(data_path, arguments.count)
+
         print("Filling DB")
         run(fill_job, cases)
 
@@ -352,3 +399,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+    input()
