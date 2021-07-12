@@ -291,3 +291,91 @@ class TestFilledIterAndCheckLSMDeallocCtx(DeallocCases):
 
             return iter(db.items())
         return maker
+
+
+class TestFilledIterIterLSMDealloc(DeallocCases):
+    @pytest.fixture(params=comp_algo)
+    def instance_maker(self, request, tmp_path, filler) -> Any:
+        def maker():
+            db = lsm.LSM(
+                tmp_path / ("db.lsm." + request.param),
+                compress=request.param
+            )
+            db.open()
+            filler(db)
+            return iter(iter(db))
+        return maker
+
+
+class TestFilledIterIterLSMKeysDeallocCtx(DeallocCases):
+    @pytest.fixture(params=comp_algo)
+    def instance_maker(self, request, tmp_path, filler) -> Any:
+        def maker():
+            db = lsm.LSM(
+                tmp_path / ("db.lsm." + request.param),
+                compress=request.param
+            )
+            db.open()
+            filler(db)
+            return iter(iter(db.keys()))
+        return maker
+
+
+class TestFilledIterSliceLSMKeysDeallocCtx(DeallocCases):
+    @pytest.fixture(params=comp_algo)
+    def instance_maker(self, request, tmp_path, filler) -> Any:
+        def maker():
+            db = lsm.LSM(
+                tmp_path / ("db.lsm." + request.param),
+                compress=request.param
+            )
+            db.open()
+            filler(db)
+            return iter(iter(db.keys()))
+        return maker
+
+
+class TestFilledIterIterLSMValuesDeallocCtx(DeallocCases):
+    @pytest.fixture(params=comp_algo)
+    def instance_maker(self, request, tmp_path, filler) -> Any:
+        def maker():
+            db = lsm.LSM(
+                tmp_path / ("db.lsm." + request.param),
+                compress=request.param
+            )
+            db.open()
+            filler(db)
+            return iter(iter(db[::-1]))
+        return maker
+
+
+class TestFilledIterIterLSMItemsDeallocCtx(DeallocCases):
+    @pytest.fixture(params=comp_algo)
+    def instance_maker(self, request, tmp_path, filler) -> Any:
+        def maker():
+            db = lsm.LSM(
+                tmp_path / ("db.lsm." + request.param),
+                compress=request.param
+            )
+            db.open()
+            filler(db)
+            return iter(iter(db.items()))
+        return maker
+
+
+class TestFilledIterIterAndCheckLSMDeallocCtx(DeallocCases):
+    @pytest.fixture(params=comp_algo)
+    def instance_maker(self, request, tmp_path, filler) -> Any:
+        def maker():
+            db = lsm.LSM(
+                tmp_path / ("db.lsm." + request.param),
+                compress=request.param
+            )
+            db.open()
+            filler(db)
+
+            for key, value in db.items():
+                assert key == value, (key, value)
+
+            return iter(iter(db.items()))
+        return maker

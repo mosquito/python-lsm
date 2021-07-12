@@ -16,6 +16,13 @@
 #define LZ4_COMP_LEVEL_DEFAULT 16
 #define LZ4_COMP_LEVEL_MAX 16
 
+#ifdef NDEBUG
+#define print_refcount(obj) printf( \
+		"\e[1;33;4;44mprint_refcount(\"%s\") -> refcount=%d [%s:%d]\e[0m\n", \
+		obj->ob_base.ob_type->tp_name, \
+		obj->ob_base.ob_refcnt, \
+		__FILE__, __LINE__)
+#endif
 
 typedef struct {
 	PyObject_HEAD
@@ -471,7 +478,7 @@ static int pylsm_slice_view_iter(LSMSliceView *self) {
 	} else {
 		switch (self->direction) {
 			case PY_LSM_SLICE_FORWARD:
-				if (rc =lsm_csr_first(self->cursor)) return rc;
+				if (rc = lsm_csr_first(self->cursor)) return rc;
 				break;
 			case PY_LSM_SLICE_BACKWARD:
 				if (rc = lsm_csr_last(self->cursor)) return rc;
@@ -617,7 +624,6 @@ static PyObject* LSMKeysView_next(LSMIterView *self) {
 	if (!lsm_csr_valid(self->cursor)) {
 		if (self->state != PY_LSM_CLOSED) {
 			self->state = PY_LSM_CLOSED;
-			Py_DECREF(self);
 		}
 
 		PyErr_SetNone(PyExc_StopIteration);
@@ -652,7 +658,6 @@ static PyObject* LSMValuesView_next(LSMIterView *self) {
 	if (!lsm_csr_valid(self->cursor)) {
 		if (self->state != PY_LSM_CLOSED) {
 			self->state = PY_LSM_CLOSED;
-			Py_DECREF(self);
 		}
 		PyErr_SetNone(PyExc_StopIteration);
 		return NULL;
@@ -699,7 +704,6 @@ static PyObject* LSMItemsView_next(LSMIterView *self) {
 	if (!lsm_csr_valid(self->cursor)) {
 		if (self->state != PY_LSM_CLOSED) {
 			self->state = PY_LSM_CLOSED;
-			Py_DECREF(self);
 		}
 		PyErr_SetNone(PyExc_StopIteration);
 		return NULL;
@@ -877,6 +881,7 @@ static int LSMSliceView_init(
 static LSMSliceView* LSMSliceView_iter(LSMSliceView* self) {
 	if (pylsm_ensure_opened(self->db)) return NULL;
 
+
 	if (self->state != PY_LSM_INITIALIZED) {
 		Py_INCREF(self);
 		return self;
@@ -921,7 +926,6 @@ static PyObject* LSMSliceView_next(LSMSliceView *self) {
 	if (!lsm_csr_valid(self->cursor)) {
 		if (self->state != PY_LSM_CLOSED) {
 			self->state = PY_LSM_CLOSED;
-			Py_DECREF(self);
 		}
 		PyErr_SetNone(PyExc_StopIteration);
 		return NULL;
@@ -943,7 +947,6 @@ static PyObject* LSMSliceView_next(LSMSliceView *self) {
 	Py_END_ALLOW_THREADS
 
 	if (rc == -1) {
-		if (self->state != PY_LSM_CLOSED) Py_DECREF(self);
 		self->state = PY_LSM_CLOSED;
 		PyErr_SetNone(PyExc_StopIteration);
 		return NULL;
@@ -952,7 +955,6 @@ static PyObject* LSMSliceView_next(LSMSliceView *self) {
 	if (pylsm_error(rc)) return NULL;
 
 	if (!lsm_csr_valid(self->cursor)) {
-		if (self->state != PY_LSM_CLOSED) Py_DECREF(self);
 		self->state = PY_LSM_CLOSED;
 		PyErr_SetNone(PyExc_StopIteration);
 		return NULL;
@@ -2592,6 +2594,7 @@ static PyObject* LSMCursor_iter(LSMCursor* self) {
 	}
 
 	self->state = PY_LSM_ITERATING;
+	Py_INCREF(self);
 	return self;
 }
 

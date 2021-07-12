@@ -77,9 +77,6 @@ def library_sources():
     result = []
     for parent_dir, files in sources.items():
         result += [os.path.join("src", parent_dir, f) for f in files]
-
-    result.append(os.path.join("src", "lsm.c"))
-    print(result)
     return result
 
 
