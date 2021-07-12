@@ -69,7 +69,8 @@ sources = {
         "common/error_private.c",
         "common/pool.c",
         "common/threading.c",
-    ]
+    ],
+    "": ["lsm.c"]
 }
 
 
