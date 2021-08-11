@@ -1,8 +1,3 @@
-# Include dependency sources
-recursive-include src/lsm *.h *.c
-recursive-include src/zstd/lib *.h *.c
-recursive-include src/lz4/lib *.h *.c
-recursive-include src/sqlite/ext/lsm1 *.h *.c
 
 # Add requirement licenses
 include src/lz4/LICENSE
