@@ -2605,14 +2605,13 @@ static PyObject* LSMCursor_iter_next(LSMCursor* self) {
 	ssize_t nKey = 0;
 	ssize_t nValue = 0;
 
-	Py_BEGIN_ALLOW_THREADS
 	LSM_MutexLock(self->db);
 
 	PyObject* result = pylsm_cursor_items_fetch(self->cursor, self->db->binary);
+	Py_BEGIN_ALLOW_THREADS
 	if (pylsm_error(lsm_csr_next(self->cursor))) return NULL;
-
-	LSM_MutexLeave(self->db);
 	Py_END_ALLOW_THREADS
+	LSM_MutexLeave(self->db);
 
 	return Py_BuildValue(
 		self->db->binary ? "(y#y#)" : "(s#s#)",
