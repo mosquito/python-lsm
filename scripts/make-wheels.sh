@@ -10,6 +10,7 @@ build_wheel cp36-cp36m
 build_wheel cp37-cp37m
 build_wheel cp38-cp38
 build_wheel cp39-cp39
+build_wheel cp310-cp310
 
 cd dist
 for f in ./*linux_*;
