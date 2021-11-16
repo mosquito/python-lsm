@@ -519,15 +519,46 @@ static int str_or_bytes_check(char binary, PyObject* pObj, const char** ppBuff, 
 }
 
 
-static inline PyObject* convertSting(uint8_t binary, const char* value, ssize_t length) {
-	PyObject* result;
-	char* cResult = PyMem_Calloc(length + 1, sizeof(char));
-	memcpy(cResult, value, length);
+static PyObject* pylsm_cursor_key_fetch(lsm_cursor* cursor, uint8_t binary) {
+	char *pKey = NULL;
+	ssize_t nKey = 0;
+	char *pValue = NULL;
+	ssize_t nValue = 0;
 
-	printf("%d: %s\n", length, cResult);
-	result = Py_BuildValue(binary ? "y#": "s#", cResult, length);
-	PyMem_Free(cResult);
-	return result;
+	if (pylsm_error(lsm_csr_key(cursor, &pKey, &nKey))) return NULL;
+	if (pylsm_error(lsm_csr_value(cursor, &pValue, &nValue))) return NULL;
+
+	return Py_BuildValue(binary ? "y#" : "s#", pKey, nKey);
+}
+
+
+static PyObject* pylsm_cursor_value_fetch(lsm_cursor* cursor, uint8_t binary) {
+	char *pKey = NULL;
+	ssize_t nKey = 0;
+	char *pValue = NULL;
+	ssize_t nValue = 0;
+
+	if (pylsm_error(lsm_csr_key(cursor, &pKey, &nKey))) return NULL;
+	if (pylsm_error(lsm_csr_value(cursor, &pValue, &nValue))) return NULL;
+
+	return Py_BuildValue(binary ? "y#" : "s#", pValue, nValue);
+}
+
+
+static PyObject* pylsm_cursor_items_fetch(lsm_cursor* cursor, uint8_t binary) {
+	char *pKey = NULL;
+	ssize_t nKey = 0;
+	char *pValue = NULL;
+	ssize_t nValue = 0;
+
+	if (pylsm_error(lsm_csr_key(cursor, &pKey, &nKey))) return NULL;
+	if (pylsm_error(lsm_csr_value(cursor, &pValue, &nValue))) return NULL;
+
+	return Py_BuildValue(
+		binary ? "(y#y#)" : "(s#s#)",
+		pKey, nKey,
+		pValue, nValue
+	);
 }
 
 
@@ -621,20 +652,6 @@ static LSMIterView* LSMIterView_iter(LSMIterView* self) {
 	return self;
 }
 
-static PyObject* pylsm_key_fetch(LSMIterView* self) {
-	char *pKey = NULL;
-	ssize_t nKey = 0;
-	char *pValue = NULL;
-	ssize_t nValue = 0;
-
-	if (pylsm_error(lsm_csr_key(self->cursor, &pKey, &nKey))) return NULL;
-	if (pylsm_error(lsm_csr_value(self->cursor, &pValue, &nValue))) return NULL;
-
-	return Py_BuildValue(
-		self->db->binary ? "y#" : "s#",
-		pKey, nKey
-	);
-}
 
 static PyObject* LSMKeysView_next(LSMIterView *self) {
 	if (pylsm_ensure_opened(self->db)) return NULL;
@@ -653,7 +670,7 @@ static PyObject* LSMKeysView_next(LSMIterView *self) {
 	}
 
 	LSM_MutexLock(self->db);
-	PyObject* result = pylsm_key_fetch(self);
+	PyObject* result = pylsm_cursor_key_fetch(self->cursor, self->db->binary);
 
 	if (pylsm_error(lsm_csr_next(self->cursor))) {
 		LSM_MutexLeave(self->db);
@@ -662,22 +679,6 @@ static PyObject* LSMKeysView_next(LSMIterView *self) {
 
 	LSM_MutexLeave(self->db);
 	return result;
-}
-
-
-static PyObject* pylsm_value_fetch(LSMIterView* self) {
-	char *pKey = NULL;
-	ssize_t nKey = 0;
-	char *pValue = NULL;
-	ssize_t nValue = 0;
-
-	if (pylsm_error(lsm_csr_key(self->cursor, &pKey, &nKey))) return NULL;
-	if (pylsm_error(lsm_csr_value(self->cursor, &pValue, &nValue))) return NULL;
-
-	return Py_BuildValue(
-		self->db->binary ? "y#" : "s#",
-		pValue, nValue
-	);
 }
 
 
@@ -696,7 +697,7 @@ static PyObject* LSMValuesView_next(LSMIterView *self) {
 	}
 
 	LSM_MutexLock(self->db);
-	PyObject* result = pylsm_value_fetch(self);
+	PyObject* result = pylsm_cursor_value_fetch(self->cursor, self->db->binary);
 
 	if (pylsm_error(lsm_csr_next(self->cursor))) {
 		LSM_MutexLeave(self->db);
@@ -706,23 +707,6 @@ static PyObject* LSMValuesView_next(LSMIterView *self) {
 	LSM_MutexLeave(self->db);
 
 	return result;
-}
-
-
-static PyObject* pylsm_items_fetch(LSMIterView* self) {
-	char *pKey = NULL;
-	ssize_t nKey = 0;
-	char *pValue = NULL;
-	ssize_t nValue = 0;
-
-	if (pylsm_error(lsm_csr_key(self->cursor, &pKey, &nKey))) return NULL;
-	if (pylsm_error(lsm_csr_value(self->cursor, &pValue, &nValue))) return NULL;
-
-	return Py_BuildValue(
-		self->db->binary ? "(y#y#)" : "(s#s#)",
-		pKey, nKey,
-		pValue, nValue
-	);
 }
 
 
@@ -738,7 +722,7 @@ static PyObject* LSMItemsView_next(LSMIterView *self) {
 	}
 
 	LSM_MutexLock(self->db);
-	PyObject* result = pylsm_items_fetch(self);
+	PyObject* result = pylsm_cursor_items_fetch(self->cursor, self->db->binary);
 
 	if (pylsm_error(lsm_csr_next(self->cursor))) {
 		LSM_MutexLeave(self->db);
@@ -994,14 +978,7 @@ static PyObject* LSMSliceView_next(LSMSliceView *self) {
 	char *pValue = NULL;
 	ssize_t nValue = 0;
 
-	if (rc = pylsm_error(lsm_csr_key(self->cursor, &pKey, &nKey))) return rc;
-	if (rc = pylsm_error(lsm_csr_value(self->cursor, &pValue, &nValue))) return rc;
-
-	return Py_BuildValue(
-		self->db->binary ? "(y#y#)" : "s#s#",
-		pKey, nKey,
-		pValue, nValue
-	);
+	return pylsm_cursor_items_fetch(self->cursor, self->db->binary);
 }
 
 
@@ -2475,21 +2452,10 @@ static PyObject* LSMCursor_retrieve(LSMCursor *self) {
 	if (pylsm_ensure_csr_opened(self)) return NULL;
 	if(!lsm_csr_valid(self->cursor)) { Py_RETURN_NONE; }
 
-	char* pKey = NULL;
-	char* pValue = NULL;
-	ssize_t nKey = 0;
-	ssize_t nValue = 0;
-
 	LSM_MutexLock(self->db);
-	lsm_csr_key(self->cursor, (const void **)&pKey, &nKey);
-	lsm_csr_value(self->cursor, (const void **)&pValue, &nValue);
+	PyObject* result = pylsm_cursor_items_fetch(self->cursor, self->db->binary);
 	LSM_MutexLeave(self->db);
-
-	return Py_BuildValue(
-		self->db->binary ? "(y#y#)" : "s#s#",
-		pKey, nKey,
-		pValue, nValue
-	);
+	return result;
 }
 
 
@@ -2501,14 +2467,11 @@ static PyObject* LSMCursor_key(LSMCursor *self) {
 	if (pylsm_ensure_csr_opened(self)) return NULL;
 	if(!lsm_csr_valid(self->cursor)) { Py_RETURN_NONE; }
 
-	char* pKey = NULL;
-	int nKey = 0;
-
 	LSM_MutexLock(self->db);
-	lsm_csr_key(self->cursor, (const void **)&pKey, &nKey);
+	PyObject* result = pylsm_cursor_key_fetch(self->cursor, self->db->binary);
 	LSM_MutexLeave(self->db);
 
-	return Py_BuildValue(self->db->binary ? "y#": "s#", pKey, nKey);
+	return result;
 }
 
 
@@ -2520,14 +2483,11 @@ static PyObject* LSMCursor_value(LSMCursor *self) {
 	if (pylsm_ensure_csr_opened(self)) return NULL;
 	if(!lsm_csr_valid(self->cursor)) { Py_RETURN_NONE; }
 
-	char* pValue = NULL;
-	int nValue = 0;
-
 	LSM_MutexLock(self->db);
-	lsm_csr_value(self->cursor, (const void **)&pValue, &nValue);
+	PyObject* result = pylsm_cursor_value_fetch(self->cursor, self->db->binary);
 	LSM_MutexLeave(self->db);
 
-	return Py_BuildValue(self->db->binary ? "y#": "s#", pValue, nValue);
+	return result;
 }
 
 
@@ -2648,16 +2608,14 @@ static PyObject* LSMCursor_iter_next(LSMCursor* self) {
 	Py_BEGIN_ALLOW_THREADS
 	LSM_MutexLock(self->db);
 
-	lsm_csr_key(self->cursor, (const void **)&pKey, &nKey);
-	lsm_csr_value(self->cursor, (const void **)&pValue, &nValue);
-
+	PyObject* result = pylsm_cursor_items_fetch(self->cursor, self->db->binary);
 	if (pylsm_error(lsm_csr_next(self->cursor))) return NULL;
 
 	LSM_MutexLeave(self->db);
 	Py_END_ALLOW_THREADS
 
 	return Py_BuildValue(
-		self->db->binary ? "(y#y#)" : "s#s#",
+		self->db->binary ? "(y#y#)" : "(s#s#)",
 		pKey, nKey,
 		pValue, nValue
 	);
