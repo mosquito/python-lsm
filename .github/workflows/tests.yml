@@ -73,4 +73,5 @@ jobs:
       - name: Run tox
         run: tox
         env:
+          FORCE_COLOR: yes
           TOXENV: ${{ matrix.toxenv }}
