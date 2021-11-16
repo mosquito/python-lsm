@@ -92,7 +92,7 @@ def library_sources():
 
 setup(
     name=module_name,
-    version="0.4.1",
+    version="0.4.2",
     ext_modules=[
         Extension(
             "lsm",
@@ -116,7 +116,7 @@ setup(
         "Documentation": "https://github.com/mosquito/python-lsm/",
         "Source": "https://github.com/mosquito/python-lsm/",
         "Tracker": "https://github.com/mosquito/python-lsm/issues",
-        "Say Thanks!": "https://saythanks.io/to/me%40mosquito.su",
+        "Say Thanks!": "https://saythanks.io/to/mosquito",
     },
     packages=[''],
     package_data={'': ["lsm.pyi"]},
@@ -139,7 +139,7 @@ setup(
         "Topic :: Software Development :: Libraries",
         "Topic :: Software Development",
     ],
-    python_requires=">=3.5.*, <4",
+    python_requires=">=3.6.*, <4",
     extras_require={
         "develop": [
             "pytest",
