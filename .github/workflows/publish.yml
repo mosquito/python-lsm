@@ -65,8 +65,8 @@ jobs:
             os: windows-latest
           - python: '3.9'
             os: windows-latest
-          - python: '3.10'
-            os: windows-latest
+          #- python: '3.10'
+          #  os: windows-latest
 
     steps:
       - uses: actions/checkout@v2
@@ -101,7 +101,7 @@ jobs:
           submodules: recursive
 
       - name: Building manylinux1 wheels
-        uses: docker://quay.io/pypa/manylinux1_x86_64
+        uses: docker://quay.io/pypa/manylinux2010_x86_64
         with:
           args: /bin/bash scripts/make-wheels.sh
 
