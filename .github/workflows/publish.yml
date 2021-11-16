@@ -65,8 +65,8 @@ jobs:
             os: windows-latest
           - python: '3.9'
             os: windows-latest
-          #- python: '3.10'
-          #  os: windows-latest
+          - python: '3.10'
+            os: windows-latest
 
     steps:
       - uses: actions/checkout@v2

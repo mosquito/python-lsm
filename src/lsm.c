@@ -80,18 +80,18 @@ typedef struct {
 
 	PyObject *start;
 	char* pStart;
-	int nStart;
+	Py_ssize_t nStart;
 
 	PyObject *stop;
 	char* pStop;
-	int nStop;
+	Py_ssize_t nStop;
 
 	int state;
 
 	long step;
 	char direction;
 
-	ssize_t counter;
+	Py_ssize_t counter;
 	PyObject* weakrefs;
 } LSMSliceView;
 
@@ -229,7 +229,7 @@ static int pylsm_zstd_xBound(LSM* self, int nIn) {
 
 
 static int pylsm_zstd_xCompress(LSM* self, char *pOut, int *pnOut, const char *pIn, int nIn) {
-	size_t rc = ZSTD_compress(pOut, *pnOut, pIn, nIn, self->compress_level);
+	Py_ssize_t rc = ZSTD_compress(pOut, *pnOut, pIn, nIn, self->compress_level);
 
 	assert(!ZSTD_isError(rc));
 
@@ -239,7 +239,7 @@ static int pylsm_zstd_xCompress(LSM* self, char *pOut, int *pnOut, const char *p
 
 
 static int pylsm_zstd_xUncompress(LSM* self, char *pOut, int *pnOut, const char *pIn, int nIn) {
-  size_t rc = ZSTD_decompress((char*)pOut, *pnOut, (const char*)pIn, nIn);
+  Py_ssize_t rc = ZSTD_decompress((char*)pOut, *pnOut, (const char*)pIn, nIn);
   assert(!ZSTD_isError(rc));
   *pnOut = rc;
   return 0;
@@ -287,11 +287,11 @@ static Py_ssize_t pylsm_csr_length(lsm_cursor* cursor, Py_ssize_t *result) {
 	Py_ssize_t counter = 0;
 	int rc = 0;
 
-	if (rc = lsm_csr_first(cursor)) return rc;
+	if ((rc = lsm_csr_first(cursor))) return rc;
 
 	while (lsm_csr_valid(cursor)) {
 		counter++;
-		if (rc = lsm_csr_next(cursor)) break;
+		if ((rc = lsm_csr_next(cursor))) break;
 	}
 
 	*result = counter;
@@ -303,7 +303,7 @@ static Py_ssize_t pylsm_length(lsm_db* lsm, Py_ssize_t *result) {
 	int rc = 0;
 	lsm_cursor *cursor;
 
-	if (rc = lsm_csr_open(lsm, &cursor)) return rc;
+	if ((rc = lsm_csr_open(lsm, &cursor))) return rc;
 	rc = pylsm_csr_length(cursor, result);
 	lsm_csr_close(cursor);
 	return rc;
@@ -321,11 +321,11 @@ static int pylsm_getitem(
 	int rc;
 	lsm_cursor *cursor;
 	char* pValue = NULL;
-	int* nValue = 0;
+	int nValue = 0;
 	char* result = NULL;
 
-	if (rc = lsm_csr_open(lsm, &cursor)) return rc;
-	if (rc = lsm_csr_seek(cursor, pKey, nKey, seek_mode)) {
+	if ((rc = lsm_csr_open(lsm, &cursor))) return rc;
+	if ((rc = lsm_csr_seek(cursor, pKey, nKey, seek_mode))) {
 		lsm_csr_close(cursor);
 		return rc;
 	}
@@ -333,7 +333,7 @@ static int pylsm_getitem(
 		lsm_csr_close(cursor);
 		return -1;
 	}
-	if (rc = lsm_csr_value(cursor, (const void **)&pValue, &nValue)) {
+	if ((rc = lsm_csr_value(cursor, (const void **)&pValue, &nValue))) {
 		lsm_csr_close(cursor);
 		return rc;
 	}
@@ -356,8 +356,8 @@ static int pylsm_delitem(
 	int rc = 0;
 	lsm_cursor *cursor;
 
-	if (rc = lsm_csr_open(lsm, &cursor)) return rc;
-	if (rc = lsm_csr_seek(cursor, pKey, nKey, LSM_SEEK_EQ)) {
+	if ((rc = lsm_csr_open(lsm, &cursor))) return rc;
+	if ((rc = lsm_csr_seek(cursor, pKey, nKey, LSM_SEEK_EQ))) {
 		lsm_csr_close(cursor);
 		return rc;
 	}
@@ -366,7 +366,7 @@ static int pylsm_delitem(
 		return -1;
 	}
 	lsm_csr_close(cursor);
-	if (rc = lsm_delete(lsm, pKey, nKey)) return rc;
+	if ((rc = lsm_delete(lsm, pKey, nKey))) return rc;
 	return 0;
 }
 
@@ -375,8 +375,8 @@ static int pylsm_contains(lsm_db* lsm, const char* pKey, int nKey) {
 	int rc;
 	lsm_cursor *cursor;
 
-	if (rc = lsm_csr_open(lsm, &cursor)) return rc;
-	if (rc = lsm_csr_seek(cursor, pKey, nKey, LSM_SEEK_EQ)) {
+	if ((rc = lsm_csr_open(lsm, &cursor))) return rc;
+	if ((rc = lsm_csr_seek(cursor, pKey, nKey, LSM_SEEK_EQ))) {
 		lsm_csr_close(cursor);
 		return rc;
 	}
@@ -418,7 +418,7 @@ int pylsm_slice_first(LSMSliceView* self) {
 	int cmp_res;
 
 	if (self->pStop != NULL) {
-		if (rc = lsm_csr_cmp(self->cursor, self->pStop, self->nStop, &cmp_res)) return rc;
+		if ((rc = lsm_csr_cmp(self->cursor, self->pStop, self->nStop, &cmp_res))) return rc;
 		if (self->direction == PY_LSM_SLICE_FORWARD && cmp_res > 0) return -1;
 		if (self->direction == PY_LSM_SLICE_BACKWARD && cmp_res < 0) return -1;
 	}
@@ -436,17 +436,17 @@ int pylsm_slice_next(LSMSliceView* self) {
 	while (lsm_csr_valid(self->cursor)) {
 		switch (self->direction) {
 			case PY_LSM_SLICE_FORWARD:
-				if (rc = lsm_csr_next(self->cursor)) return rc;
+				if ((rc = lsm_csr_next(self->cursor))) return rc;
 				break;
 			case PY_LSM_SLICE_BACKWARD:
-				if (rc = lsm_csr_prev(self->cursor)) return rc;
+				if ((rc = lsm_csr_prev(self->cursor))) return rc;
 				break;
 		}
 
 		if (!lsm_csr_valid(self->cursor)) break;
 
 		if (self->pStop != NULL) {
-			if (rc = lsm_csr_cmp(self->cursor, self->pStop, self->nStop, &cmp_res)) return rc;
+			if ((rc = lsm_csr_cmp(self->cursor, self->pStop, self->nStop, &cmp_res))) return rc;
 			if (self->direction == PY_LSM_SLICE_FORWARD && cmp_res > 0) break;
 			if (self->direction == PY_LSM_SLICE_BACKWARD && cmp_res < 0) break;
 		}
@@ -467,21 +467,19 @@ static inline int pylsm_seek_mode_direction(int direction) {
 static int pylsm_slice_view_iter(LSMSliceView *self) {
 	int rc;
 
-	if (rc = lsm_csr_open(self->db->lsm, &self->cursor)) return rc;
+	if ((rc = lsm_csr_open(self->db->lsm, &self->cursor))) return rc;
 
-	const char* pKey;
-	int nKey;
 	int seek_mode = pylsm_seek_mode_direction(self->direction);
 
 	if (self->pStart != NULL) {
-		if (rc = lsm_csr_seek(self->cursor, self->pStart, self->nStart, seek_mode)) return rc;
+		if ((rc = lsm_csr_seek(self->cursor, self->pStart, self->nStart, seek_mode))) return rc;
 	} else {
 		switch (self->direction) {
 			case PY_LSM_SLICE_FORWARD:
-				if (rc = lsm_csr_first(self->cursor)) return rc;
+				if ((rc = lsm_csr_first(self->cursor))) return rc;
 				break;
 			case PY_LSM_SLICE_BACKWARD:
-				if (rc = lsm_csr_last(self->cursor)) return rc;
+				if ((rc = lsm_csr_last(self->cursor))) return rc;
 				break;
 		}
 	}
@@ -490,9 +488,9 @@ static int pylsm_slice_view_iter(LSMSliceView *self) {
 }
 
 
-static int str_or_bytes_check(char binary, PyObject* pObj, const char** ppBuff, ssize_t* nBuf) {
+static int str_or_bytes_check(char binary, PyObject* pObj, const char** ppBuff, Py_ssize_t* nBuf) {
 	const char * buff = NULL;
-	ssize_t buff_len = 0;
+	Py_ssize_t buff_len = 0;
 
 	if (binary) {
 		if (PyBytes_Check(pObj)) {
@@ -521,12 +519,12 @@ static int str_or_bytes_check(char binary, PyObject* pObj, const char** ppBuff, 
 
 static PyObject* pylsm_cursor_key_fetch(lsm_cursor* cursor, uint8_t binary) {
 	char *pKey = NULL;
-	ssize_t nKey = 0;
+	int nKey = 0;
 	char *pValue = NULL;
-	ssize_t nValue = 0;
+	int nValue = 0;
 
-	if (pylsm_error(lsm_csr_key(cursor, &pKey, &nKey))) return NULL;
-	if (pylsm_error(lsm_csr_value(cursor, &pValue, &nValue))) return NULL;
+	if (pylsm_error(lsm_csr_key(cursor, (const void**) &pKey, &nKey))) return NULL;
+	if (pylsm_error(lsm_csr_value(cursor, (const void**) &pValue, &nValue))) return NULL;
 
 	return Py_BuildValue(binary ? "y#" : "s#", pKey, nKey);
 }
@@ -534,12 +532,12 @@ static PyObject* pylsm_cursor_key_fetch(lsm_cursor* cursor, uint8_t binary) {
 
 static PyObject* pylsm_cursor_value_fetch(lsm_cursor* cursor, uint8_t binary) {
 	char *pKey = NULL;
-	ssize_t nKey = 0;
+	int nKey = 0;
 	char *pValue = NULL;
-	ssize_t nValue = 0;
+	int nValue = 0;
 
-	if (pylsm_error(lsm_csr_key(cursor, &pKey, &nKey))) return NULL;
-	if (pylsm_error(lsm_csr_value(cursor, &pValue, &nValue))) return NULL;
+	if (pylsm_error(lsm_csr_key(cursor, (const void**) &pKey, &nKey))) return NULL;
+	if (pylsm_error(lsm_csr_value(cursor, (const void**) &pValue, &nValue))) return NULL;
 
 	return Py_BuildValue(binary ? "y#" : "s#", pValue, nValue);
 }
@@ -547,12 +545,12 @@ static PyObject* pylsm_cursor_value_fetch(lsm_cursor* cursor, uint8_t binary) {
 
 static PyObject* pylsm_cursor_items_fetch(lsm_cursor* cursor, uint8_t binary) {
 	char *pKey = NULL;
-	ssize_t nKey = 0;
+	int nKey = 0;
 	char *pValue = NULL;
-	ssize_t nValue = 0;
+	int nValue = 0;
 
-	if (pylsm_error(lsm_csr_key(cursor, &pKey, &nKey))) return NULL;
-	if (pylsm_error(lsm_csr_value(cursor, &pValue, &nValue))) return NULL;
+	if (pylsm_error(lsm_csr_key(cursor, (const void**) &pKey, &nKey))) return NULL;
+	if (pylsm_error(lsm_csr_value(cursor, (const void**) &pValue, &nValue))) return NULL;
 
 	return Py_BuildValue(
 		binary ? "(y#y#)" : "(s#s#)",
@@ -685,9 +683,6 @@ static PyObject* LSMKeysView_next(LSMIterView *self) {
 static PyObject* LSMValuesView_next(LSMIterView *self) {
 	if (pylsm_ensure_opened(self->db)) return NULL;
 
-	char *pValue = NULL;
-	ssize_t nValue = 0;
-
 	if (!lsm_csr_valid(self->cursor)) {
 		if (self->state != PY_LSM_CLOSED) {
 			self->state = PY_LSM_CLOSED;
@@ -749,7 +744,7 @@ static PySequenceMethods LSMKeysView_sequence = {
 
 static int LSMIterView_contains(LSMIterView* self, PyObject* key) {
 	PyErr_SetNone(PyExc_NotImplementedError);
-	return NULL;
+	return 0;
 }
 
 
@@ -875,12 +870,12 @@ static int LSMSliceView_init(
 	self->counter = 0;
 
 	if (self->stop != Py_None) {
-		if (str_or_bytes_check(self->db->binary, self->stop, &self->pStop, &self->nStop)) return -1;
+		if (str_or_bytes_check(self->db->binary, self->stop, (const char **) &self->pStop, &self->nStop)) return -1;
 		Py_INCREF(self->stop);
 	}
 
 	if (self->start != Py_None) {
-		if (str_or_bytes_check(self->db->binary, self->start, &self->pStart, &self->nStart)) return -1;
+		if (str_or_bytes_check(self->db->binary, self->start, (const char **) &self->pStart, &self->nStart)) return -1;
 		Py_INCREF(self->start);
 	}
 
@@ -971,12 +966,6 @@ static PyObject* LSMSliceView_next(LSMSliceView *self) {
 		PyErr_SetNone(PyExc_StopIteration);
 		return NULL;
 	}
-
-	char *pKey = NULL;
-	ssize_t nKey = 0;
-
-	char *pValue = NULL;
-	ssize_t nValue = 0;
 
 	return pylsm_cursor_items_fetch(self->cursor, self->db->binary);
 }
@@ -1076,7 +1065,7 @@ static int LSM_init(LSM *self, PyObject *args, PyObject *kwds) {
 	int compressor_id = LSM_COMPRESSION_NONE;
 
 	PyObject* pyPath;
-	char *path;
+	const char *path;
 	Py_ssize_t path_len;
 
 	if (!PyArg_ParseTupleAndKeywords(
@@ -1226,7 +1215,7 @@ static int LSM_init(LSM *self, PyObject *args, PyObject *kwds) {
 	if (pylsm_error(self->lsm_env->xMutexNew(self->lsm_env, &self->lsm_mutex))) return -1;
 
 	if (self->logger != NULL) {
-		lsm_config_log(self->lsm, pylsm_logger, self);
+		lsm_config_log(self->lsm, (void (*)(void *, int, const char *)) pylsm_logger, self);
 	} else {
 		lsm_config_log(self->lsm, NULL, NULL);
 	}
@@ -1243,15 +1232,15 @@ static int LSM_init(LSM *self, PyObject *args, PyObject *kwds) {
 
 		switch (compressor_id) {
 			case PY_LSM_COMPRESSOR_LZ4:
-				self->lsm_compress.xCompress = pylsm_lz4_xCompress;
-				self->lsm_compress.xUncompress = pylsm_lz4_xUncompress;
-				self->lsm_compress.xBound = pylsm_lz4_xBound;
+				self->lsm_compress.xCompress = (int (*)(void *, char *, int *, const char *, int)) pylsm_lz4_xCompress;
+				self->lsm_compress.xUncompress = (int (*)(void *, char *, int *, const char *, int)) pylsm_lz4_xUncompress;
+				self->lsm_compress.xBound = (int (*)(void *, int)) pylsm_lz4_xBound;
 				self->lsm_compress.xFree = NULL;
 				break;
 			case PY_LSM_COMPRESSOR_ZSTD:
-				self->lsm_compress.xCompress = pylsm_zstd_xCompress;
-				self->lsm_compress.xUncompress = pylsm_zstd_xUncompress;
-				self->lsm_compress.xBound = pylsm_zstd_xBound;
+				self->lsm_compress.xCompress = (int (*)(void *, char *, int *, const char *, int)) pylsm_zstd_xCompress;
+				self->lsm_compress.xUncompress = (int (*)(void *, char *, int *, const char *, int)) pylsm_zstd_xUncompress;
+				self->lsm_compress.xBound = (int (*)(void *, int)) pylsm_zstd_xBound;
 				self->lsm_compress.xFree = NULL;
 				break;
 		}
@@ -1600,7 +1589,7 @@ static PyObject* LSM_getitem(LSM *self, PyObject *arg) {
 	PyObject* key = arg;
 	const char* pKey = NULL;
 	Py_ssize_t nKey = 0;
-	ssize_t tuple_size;
+	Py_ssize_t tuple_size;
 	int seek_mode = LSM_SEEK_EQ;
 
 	if (PySlice_Check(arg)) {
@@ -1608,7 +1597,7 @@ static PyObject* LSM_getitem(LSM *self, PyObject *arg) {
 
 		LSMSliceView* view = (LSMSliceView*) LSMSliceView_new(&LSMSliceType);
 		if (LSMSliceView_init(view, self, slice->start, slice->stop, slice->step)) return NULL;
-		return view;
+		return (PyObject*) view;
 	}
 
 	if (PyTuple_Check(arg)) {
@@ -1703,8 +1692,6 @@ static int LSM_set_del_item(LSM* self, PyObject* key, PyObject* value) {
 
 		PySliceObject* slice = (PySliceObject*) key;
 
-		long step = 1;
-
 		if (slice->step != Py_None) {
 			PyErr_SetString(PyExc_ValueError, "Stepping not allowed in delete_range operation");
 			return -1;
@@ -1717,11 +1704,11 @@ static int LSM_set_del_item(LSM* self, PyObject* key, PyObject* value) {
 
 		char *pStop = NULL;
 		char *pStart = NULL;
-		ssize_t nStart = 0;
-		ssize_t nStop = 0;
+		Py_ssize_t nStart = 0;
+		Py_ssize_t nStop = 0;
 
-		if (str_or_bytes_check(self->binary, slice->start, &pStart, &nStart)) return -1;
-		if (str_or_bytes_check(self->binary, slice->stop, &pStop, &nStop)) return -1;
+		if (str_or_bytes_check(self->binary, slice->start, (const char **) &pStart, &nStart)) return -1;
+		if (str_or_bytes_check(self->binary, slice->stop, (const char **) &pStop, &nStop)) return -1;
 
 		Py_INCREF(slice->start);
 		Py_INCREF(slice->stop);
@@ -1771,12 +1758,12 @@ static int LSM_set_del_item(LSM* self, PyObject* key, PyObject* value) {
 
 
 static int LSM_contains(LSM *self, PyObject *key) {
-	if (pylsm_ensure_opened(self)) return NULL;
+	if (pylsm_ensure_opened(self)) return 0;
 
 	const char* pKey = NULL;
 	Py_ssize_t nKey = 0;
 
-	if (str_or_bytes_check(self->binary, key, &pKey, &nKey)) return NULL;
+	if (str_or_bytes_check(self->binary, key, (const char**) &pKey, &nKey)) return 0;
 
 	int rc;
 
@@ -1911,17 +1898,17 @@ static PyObject* LSM_update(LSM* self, PyObject *args) {
 		return NULL;
 	}
 
-	ssize_t mapping_size = PyMapping_Length(value);
+	Py_ssize_t mapping_size = PyMapping_Length(value);
 
 	PyObject **keys_objects = PyMem_Calloc(mapping_size, sizeof(PyObject*));
 	PyObject **values_objects = PyMem_Calloc(mapping_size, sizeof(PyObject*));
 	char **keys = PyMem_Calloc(mapping_size, sizeof(char*));
 	char **values = PyMem_Calloc(mapping_size, sizeof(char*));
-	ssize_t *key_sizes = PyMem_Calloc(mapping_size, sizeof(ssize_t*));
-	ssize_t *value_sizes = PyMem_Calloc(mapping_size, sizeof(ssize_t*));
+	Py_ssize_t *key_sizes = PyMem_Calloc(mapping_size, sizeof(Py_ssize_t*));
+	Py_ssize_t *value_sizes = PyMem_Calloc(mapping_size, sizeof(Py_ssize_t*));
 
 	PyObject *item;
-	size_t count = 0;
+	Py_ssize_t count = 0;
 	PyObject *iterator = PyObject_GetIter(items);
 
 	PyObject* obj;
@@ -1941,7 +1928,7 @@ static PyObject* LSM_update(LSM* self, PyObject *args) {
 		}
 
 		obj = PyTuple_GET_ITEM(item, 0);
-		if (str_or_bytes_check(self->binary, obj, &keys[count], &key_sizes[count])) {
+		if (str_or_bytes_check(self->binary, obj, (const char**) &keys[count], &key_sizes[count])) {
 			Py_DECREF(item);
 			is_ok = 0;
 			break;
@@ -1951,7 +1938,7 @@ static PyObject* LSM_update(LSM* self, PyObject *args) {
 		Py_INCREF(obj);
 
 		obj = PyTuple_GET_ITEM(item, 1);
-		if (str_or_bytes_check(self->binary, obj, &values[count], &value_sizes[count])) {
+		if (str_or_bytes_check(self->binary, obj, (const char**) &values[count], &value_sizes[count])) {
 			Py_DECREF(item);
 			is_ok = 0;
 			break;
@@ -1969,8 +1956,8 @@ static PyObject* LSM_update(LSM* self, PyObject *args) {
 	if (is_ok) {
 		Py_BEGIN_ALLOW_THREADS
 		LSM_MutexLock(self);
-		for (size_t i=0; i < mapping_size; i++) {
-			if (rc = lsm_insert(self->lsm, keys[i], key_sizes[i], values[i], value_sizes[i])) break;
+		for (Py_ssize_t i=0; i < mapping_size; i++) {
+			if ((rc = lsm_insert(self->lsm, keys[i], key_sizes[i], values[i], value_sizes[i]))) break;
 		}
 		LSM_MutexLeave(self);
 		Py_END_ALLOW_THREADS
@@ -1978,8 +1965,8 @@ static PyObject* LSM_update(LSM* self, PyObject *args) {
 		if (pylsm_error(rc)) is_ok = 0;
 	}
 
-	for (size_t i = 0; i < mapping_size && keys_objects[i] != NULL; i++) Py_DECREF(keys_objects[i]);
-	for (size_t i = 0; i < mapping_size && values_objects[i] != NULL; i++) Py_DECREF(values_objects[i]);
+	for (Py_ssize_t i = 0; i < mapping_size && keys_objects[i] != NULL; i++) Py_DECREF(keys_objects[i]);
+	for (Py_ssize_t i = 0; i < mapping_size && values_objects[i] != NULL; i++) Py_DECREF(values_objects[i]);
 
 	PyMem_Free(key_sizes);
 	PyMem_Free(value_sizes);
@@ -2246,7 +2233,7 @@ static PyMethodDef LSM_methods[] = {
 static PyGetSetDef LSMTypeGetSet[] = {
 	{
 		.name = "compress",
-		.get = LSM_compress_get,
+		.get = (PyObject *(*)(PyObject *, void *)) LSM_compress_get,
 		.doc = "Compression algorithm"
 	},
 	{NULL} /* Sentinel */
@@ -2279,7 +2266,7 @@ static PyTypeObject LSMType = {
 	.tp_repr = (reprfunc) LSM_repr,
 	.tp_as_mapping = &LSMTypeMapping,
 	.tp_as_sequence = &LSMTypeSequence,
-	.tp_getset = &LSMTypeGetSet,
+	.tp_getset = (struct PyGetSetDef *) &LSMTypeGetSet,
 	.tp_iter = (getiterfunc) LSM_iter,
 	.tp_weaklistoffset = offsetof(LSM, weakrefs)
 };
@@ -2583,7 +2570,7 @@ static PyObject* LSMCursor_iter(LSMCursor* self) {
 
 	self->state = PY_LSM_ITERATING;
 	Py_INCREF(self);
-	return self;
+	return (PyObject*) self;
 }
 
 
@@ -2600,11 +2587,6 @@ static PyObject* LSMCursor_iter_next(LSMCursor* self) {
 		return NULL;
 	}
 
-	char* pKey = NULL;
-	char* pValue = NULL;
-	ssize_t nKey = 0;
-	ssize_t nValue = 0;
-
 	LSM_MutexLock(self->db);
 
 	PyObject* result = pylsm_cursor_items_fetch(self->cursor, self->db->binary);
@@ -2613,11 +2595,7 @@ static PyObject* LSMCursor_iter_next(LSMCursor* self) {
 	Py_END_ALLOW_THREADS
 	LSM_MutexLeave(self->db);
 
-	return Py_BuildValue(
-		self->db->binary ? "(y#y#)" : "(s#s#)",
-		pKey, nKey,
-		pValue, nValue
-	);
+	return result;
 }
 
 
@@ -2683,7 +2661,7 @@ static PyMethodDef LSMCursor_methods[] = {
 	},
 	{
 		"value",
-		(PyCFunction) LSMCursor_key, METH_NOARGS,
+		(PyCFunction) LSMCursor_value, METH_NOARGS,
 		"Retrieve value"
 	},
 	{
@@ -2743,7 +2721,7 @@ static void LSMTransaction_dealloc(LSMTransaction *self) {
 
 
 static PyObject* LSMTransaction_ctx_enter(LSMTransaction *self) {
-	if (pylsm_ensure_writable(self)) return NULL;
+	if (pylsm_ensure_writable(self->db)) return NULL;
 	return (PyObject*) self;
 }
 
