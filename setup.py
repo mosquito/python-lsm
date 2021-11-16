@@ -10,15 +10,24 @@ module_name = "lsm"
 define_macros = []
 compiller_args = []
 libraries = []
+extra_link_args = []
 
+if platform.system() == 'Darwin':
+    extra_link_args += ['-Wl,-s']
+
+if platform.system() == 'Linux':
+    extra_link_args += ['-Wl,--strip-all']
 
 if platform.system() in ("Darwin", "Linux"):
     define_macros.append(('LSM_MUTEX_PTHREADS', None))
     compiller_args += (
         "-g3",
         "-std=c99",
-        "-Os",
-        "-fpic"
+        "-O0",
+        "-fPIC",
+        "-Wall",
+        "-ftrapv",
+        "-fwrapv",
     )
     libraries.append("pthread")
 
@@ -83,7 +92,7 @@ def library_sources():
 
 setup(
     name=module_name,
-    version="0.3.8",
+    version="0.3.9",
     ext_modules=[
         Extension(
             "lsm",
@@ -92,6 +101,7 @@ setup(
             define_macros=define_macros,
             libraries=libraries,
             extra_compile_args=compiller_args,
+            extra_link_args=extra_link_args,
         ),
     ],
     include_package_data=True,
