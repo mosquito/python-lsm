@@ -519,6 +519,18 @@ static int str_or_bytes_check(char binary, PyObject* pObj, const char** ppBuff, 
 }
 
 
+static inline PyObject* convertSting(uint8_t binary, const char* value, ssize_t length) {
+	PyObject* result;
+	char* cResult = PyMem_Calloc(length + 1, sizeof(char));
+	memcpy(cResult, value, length);
+
+	printf("%d: %s\n", length, cResult);
+	result = Py_BuildValue(binary ? "y#": "s#", cResult, length);
+	PyMem_Free(cResult);
+	return result;
+}
+
+
 static PyObject* LSMIterView_new(PyTypeObject *type) {
 	LSMIterView *self;
 	self = (LSMIterView *) type->tp_alloc(type, 0);
@@ -609,6 +621,20 @@ static LSMIterView* LSMIterView_iter(LSMIterView* self) {
 	return self;
 }
 
+static PyObject* pylsm_key_fetch(LSMIterView* self) {
+	char *pKey = NULL;
+	ssize_t nKey = 0;
+	char *pValue = NULL;
+	ssize_t nValue = 0;
+
+	if (pylsm_error(lsm_csr_key(self->cursor, &pKey, &nKey))) return NULL;
+	if (pylsm_error(lsm_csr_value(self->cursor, &pValue, &nValue))) return NULL;
+
+	return Py_BuildValue(
+		self->db->binary ? "y#" : "s#",
+		pKey, nKey
+	);
+}
 
 static PyObject* LSMKeysView_next(LSMIterView *self) {
 	if (pylsm_ensure_opened(self->db)) return NULL;
@@ -616,10 +642,6 @@ static PyObject* LSMKeysView_next(LSMIterView *self) {
 		PyErr_SetString(PyExc_RuntimeError, "Must call __iter__ before __next__");
 		return NULL;
 	}
-
-	PyObject *result;
-	char *pKey = NULL;
-	ssize_t nKey = 0;
 
 	if (!lsm_csr_valid(self->cursor)) {
 		if (self->state != PY_LSM_CLOSED) {
@@ -631,11 +653,7 @@ static PyObject* LSMKeysView_next(LSMIterView *self) {
 	}
 
 	LSM_MutexLock(self->db);
-
-	if (pylsm_error(lsm_csr_key(self->cursor, (const void **) &pKey, &nKey))) {
-		LSM_MutexLeave(self->db);
-		return NULL;
-	}
+	PyObject* result = pylsm_key_fetch(self);
 
 	if (pylsm_error(lsm_csr_next(self->cursor))) {
 		LSM_MutexLeave(self->db);
@@ -643,15 +661,29 @@ static PyObject* LSMKeysView_next(LSMIterView *self) {
 	};
 
 	LSM_MutexLeave(self->db);
+	return result;
+}
 
-	return Py_BuildValue(self->db->binary ? "y#": "s#", pKey, nKey);
+
+static PyObject* pylsm_value_fetch(LSMIterView* self) {
+	char *pKey = NULL;
+	ssize_t nKey = 0;
+	char *pValue = NULL;
+	ssize_t nValue = 0;
+
+	if (pylsm_error(lsm_csr_key(self->cursor, &pKey, &nKey))) return NULL;
+	if (pylsm_error(lsm_csr_value(self->cursor, &pValue, &nValue))) return NULL;
+
+	return Py_BuildValue(
+		self->db->binary ? "y#" : "s#",
+		pValue, nValue
+	);
 }
 
 
 static PyObject* LSMValuesView_next(LSMIterView *self) {
 	if (pylsm_ensure_opened(self->db)) return NULL;
 
-	PyObject *result;
 	char *pValue = NULL;
 	ssize_t nValue = 0;
 
@@ -664,11 +696,7 @@ static PyObject* LSMValuesView_next(LSMIterView *self) {
 	}
 
 	LSM_MutexLock(self->db);
-
-	if (pylsm_error(lsm_csr_value(self->cursor, &pValue, &nValue))) {
-		LSM_MutexLeave(self->db);
-		return NULL;
-	}
+	PyObject* result = pylsm_value_fetch(self);
 
 	if (pylsm_error(lsm_csr_next(self->cursor))) {
 		LSM_MutexLeave(self->db);
@@ -677,7 +705,7 @@ static PyObject* LSMValuesView_next(LSMIterView *self) {
 
 	LSM_MutexLeave(self->db);
 
-	return Py_BuildValue(self->db->binary ? "y#": "s#", pValue, nValue);
+	return result;
 }
 
 
@@ -691,7 +719,7 @@ static PyObject* pylsm_items_fetch(LSMIterView* self) {
 	if (pylsm_error(lsm_csr_value(self->cursor, &pValue, &nValue))) return NULL;
 
 	return Py_BuildValue(
-		self->db->binary ? "(y#y#)" : "s#s#",
+		self->db->binary ? "(y#y#)" : "(s#s#)",
 		pKey, nKey,
 		pValue, nValue
 	);
@@ -1133,13 +1161,13 @@ static int LSM_init(LSM *self, PyObject *args, PyObject *kwds) {
 
 	if (!(
 		is_power_of_two(self->block_size) &&
-		self->block_size > 64 &&
+		self->block_size >= 64 &&
 		self->block_size < 65536
 	)) {
 		PyErr_Format(
 			PyExc_ValueError,
 			"block_size parameter must be power of two between "
-			"64 and 65536. Not %d",
+			"64 and 65535. Not %d",
 			self->block_size
 		);
 		return -1;
