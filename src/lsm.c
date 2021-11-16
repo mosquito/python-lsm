@@ -229,7 +229,7 @@ static int pylsm_zstd_xBound(LSM* self, int nIn) {
 
 
 static int pylsm_zstd_xCompress(LSM* self, char *pOut, int *pnOut, const char *pIn, int nIn) {
-	Py_ssize_t rc = ZSTD_compress(pOut, *pnOut, pIn, nIn, self->compress_level);
+	int rc = ZSTD_compress(pOut, *pnOut, pIn, nIn, self->compress_level);
 
 	assert(!ZSTD_isError(rc));
 
@@ -239,7 +239,7 @@ static int pylsm_zstd_xCompress(LSM* self, char *pOut, int *pnOut, const char *p
 
 
 static int pylsm_zstd_xUncompress(LSM* self, char *pOut, int *pnOut, const char *pIn, int nIn) {
-  Py_ssize_t rc = ZSTD_decompress((char*)pOut, *pnOut, (const char*)pIn, nIn);
+  int rc = ZSTD_decompress((char*)pOut, *pnOut, (const char*)pIn, nIn);
   assert(!ZSTD_isError(rc));
   *pnOut = rc;
   return 0;
@@ -670,6 +670,11 @@ static PyObject* LSMKeysView_next(LSMIterView *self) {
 	LSM_MutexLock(self->db);
 	PyObject* result = pylsm_cursor_key_fetch(self->cursor, self->db->binary);
 
+	if (result == NULL) {
+		LSM_MutexLeave(self->db);
+		return NULL;
+	}
+
 	if (pylsm_error(lsm_csr_next(self->cursor))) {
 		LSM_MutexLeave(self->db);
 		return NULL;
@@ -693,6 +698,10 @@ static PyObject* LSMValuesView_next(LSMIterView *self) {
 
 	LSM_MutexLock(self->db);
 	PyObject* result = pylsm_cursor_value_fetch(self->cursor, self->db->binary);
+	if (result == NULL) {
+		LSM_MutexLeave(self->db);
+		return NULL;
+	}
 
 	if (pylsm_error(lsm_csr_next(self->cursor))) {
 		LSM_MutexLeave(self->db);
@@ -718,6 +727,10 @@ static PyObject* LSMItemsView_next(LSMIterView *self) {
 
 	LSM_MutexLock(self->db);
 	PyObject* result = pylsm_cursor_items_fetch(self->cursor, self->db->binary);
+	if (result == NULL) {
+		LSM_MutexLeave(self->db);
+		return NULL;
+	}
 
 	if (pylsm_error(lsm_csr_next(self->cursor))) {
 		LSM_MutexLeave(self->db);
@@ -1908,7 +1921,7 @@ static PyObject* LSM_update(LSM* self, PyObject *args) {
 	Py_ssize_t *value_sizes = PyMem_Calloc(mapping_size, sizeof(Py_ssize_t*));
 
 	PyObject *item;
-	Py_ssize_t count = 0;
+	int count = 0;
 	PyObject *iterator = PyObject_GetIter(items);
 
 	PyObject* obj;
@@ -1956,7 +1969,7 @@ static PyObject* LSM_update(LSM* self, PyObject *args) {
 	if (is_ok) {
 		Py_BEGIN_ALLOW_THREADS
 		LSM_MutexLock(self);
-		for (Py_ssize_t i=0; i < mapping_size; i++) {
+		for (int i=0; i < mapping_size; i++) {
 			if ((rc = lsm_insert(self->lsm, keys[i], key_sizes[i], values[i], value_sizes[i]))) break;
 		}
 		LSM_MutexLeave(self);
@@ -1965,8 +1978,8 @@ static PyObject* LSM_update(LSM* self, PyObject *args) {
 		if (pylsm_error(rc)) is_ok = 0;
 	}
 
-	for (Py_ssize_t i = 0; i < mapping_size && keys_objects[i] != NULL; i++) Py_DECREF(keys_objects[i]);
-	for (Py_ssize_t i = 0; i < mapping_size && values_objects[i] != NULL; i++) Py_DECREF(values_objects[i]);
+	for (int i = 0; i < mapping_size && keys_objects[i] != NULL; i++) Py_DECREF(keys_objects[i]);
+	for (int i = 0; i < mapping_size && values_objects[i] != NULL; i++) Py_DECREF(values_objects[i]);
 
 	PyMem_Free(key_sizes);
 	PyMem_Free(value_sizes);
@@ -2590,6 +2603,11 @@ static PyObject* LSMCursor_iter_next(LSMCursor* self) {
 	LSM_MutexLock(self->db);
 
 	PyObject* result = pylsm_cursor_items_fetch(self->cursor, self->db->binary);
+	if (result == NULL) {
+		LSM_MutexLeave(self->db);
+		return NULL;
+	}
+
 	Py_BEGIN_ALLOW_THREADS
 	if (pylsm_error(lsm_csr_next(self->cursor))) return NULL;
 	Py_END_ALLOW_THREADS
