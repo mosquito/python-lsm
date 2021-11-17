@@ -552,8 +552,16 @@ static PyObject* pylsm_cursor_items_fetch(lsm_cursor* cursor, uint8_t binary) {
 	if (pylsm_error(lsm_csr_key(cursor, (const void**) &pKey, &nKey))) return NULL;
 	if (pylsm_error(lsm_csr_value(cursor, (const void**) &pValue, &nValue))) return NULL;
 
+	if (pKey == NULL) {
+		printf("boo\n");
+	}
+
+	if (pValue == NULL) {
+		printf("baa\n");
+	}
+
 	return Py_BuildValue(
-		binary ? "(y#y#)" : "(s#s#)",
+		binary ? "(y#y#)" : "s#s#",
 		pKey, nKey,
 		pValue, nValue
 	);
