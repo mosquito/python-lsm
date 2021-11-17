@@ -549,8 +549,8 @@ static PyObject* pylsm_cursor_items_fetch(lsm_cursor* cursor, uint8_t binary) {
 	char *pValue = NULL;
 	int nValue = 0;
 
-	if (pylsm_error(lsm_csr_key(cursor, (const void**) &pKey, &nKey))) return NULL;
-	if (pylsm_error(lsm_csr_value(cursor, (const void**) &pValue, &nValue))) return NULL;
+	lsm_csr_key(cursor, (const void**) &pKey, &nKey);
+	lsm_csr_value(cursor, (const void**) &pValue, &nValue);
 
 	if (pKey != NULL) {
 		printf("pKey: %s\n", pKey);
