@@ -526,7 +526,11 @@ static PyObject* pylsm_cursor_key_fetch(lsm_cursor* cursor, uint8_t binary) {
 	if (pylsm_error(lsm_csr_key(cursor, (const void**) &pKey, &nKey))) return NULL;
 	if (pylsm_error(lsm_csr_value(cursor, (const void**) &pValue, &nValue))) return NULL;
 
-	return Py_BuildValue(binary ? "y#" : "s#", pKey, nKey);
+	if (binary) {
+		return PyBytes_FromStringAndSize(pKey, nKey);
+	} else {
+		return PyUnicode_FromStringAndSize(pKey, nKey);
+	}
 }
 
 
@@ -539,7 +543,11 @@ static PyObject* pylsm_cursor_value_fetch(lsm_cursor* cursor, uint8_t binary) {
 	if (pylsm_error(lsm_csr_key(cursor, (const void**) &pKey, &nKey))) return NULL;
 	if (pylsm_error(lsm_csr_value(cursor, (const void**) &pValue, &nValue))) return NULL;
 
-	return Py_BuildValue(binary ? "y#" : "s#", pValue, nValue);
+	if (binary) {
+		return PyBytes_FromStringAndSize(pValue, nValue);
+	} else {
+		return PyUnicode_FromStringAndSize(pValue, nValue);
+	}
 }
 
 
@@ -552,19 +560,22 @@ static PyObject* pylsm_cursor_items_fetch(lsm_cursor* cursor, uint8_t binary) {
 	lsm_csr_key(cursor, (const void**) &pKey, &nKey);
 	lsm_csr_value(cursor, (const void**) &pValue, &nValue);
 
-	if (pKey != NULL) {
-		printf("pKey: %s\n", pKey);
+	PyObject* result;
+	if (binary) {
+		result = PyTuple_Pack(
+			2, 
+			PyBytes_FromStringAndSize(pKey, nKey), 
+			PyBytes_FromStringAndSize(pValue, nValue)
+		);
+	} else {
+		result = PyTuple_Pack(
+			2, 
+			PyUnicode_FromStringAndSize(pKey, nKey),
+			PyUnicode_FromStringAndSize(pValue, nValue)
+		);
 	}
 
-	if (pValue != NULL) {
-		printf("pValue: %s\n", pValue);
-	}
-
-	return Py_BuildValue(
-		binary ? "(y#y#)" : "s#s#",
-		pKey, nKey,
-		pValue, nValue
-	);
+	return result;
 }
 
 
@@ -734,7 +745,10 @@ static PyObject* LSMItemsView_next(LSMIterView *self) {
 	}
 
 	LSM_MutexLock(self->db);
-	PyObject* result = pylsm_cursor_items_fetch(self->cursor, self->db->binary);
+	PyObject* result = pylsm_cursor_items_fetch(
+		self->cursor,
+		self->db->binary
+	);
 	if (result == NULL) {
 		LSM_MutexLeave(self->db);
 		return NULL;
