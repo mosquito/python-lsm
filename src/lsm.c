@@ -223,13 +223,13 @@ static int pylsm_lz4_xUncompress(LSM* self, char *pOut, int *pnOut, const char *
 }
 
 
-static int pylsm_zstd_xBound(LSM* self, int nIn) {
+static size_t pylsm_zstd_xBound(LSM* self, int nIn) {
 	return ZSTD_compressBound(nIn);
 }
 
 
-static int pylsm_zstd_xCompress(LSM* self, char *pOut, int *pnOut, const char *pIn, int nIn) {
-	int rc = ZSTD_compress(pOut, *pnOut, pIn, nIn, self->compress_level);
+static size_t pylsm_zstd_xCompress(LSM* self, char *pOut, Py_ssize_t *pnOut, const char *pIn, int nIn) {
+	size_t rc = ZSTD_compress(pOut, *pnOut, pIn, nIn, self->compress_level);
 
 	assert(!ZSTD_isError(rc));
 
@@ -238,8 +238,8 @@ static int pylsm_zstd_xCompress(LSM* self, char *pOut, int *pnOut, const char *p
 }
 
 
-static int pylsm_zstd_xUncompress(LSM* self, char *pOut, int *pnOut, const char *pIn, int nIn) {
-  int rc = ZSTD_decompress((char*)pOut, *pnOut, (const char*)pIn, nIn);
+static int pylsm_zstd_xUncompress(LSM* self, char *pOut, Py_ssize_t *pnOut, const char *pIn, int nIn) {
+  Py_ssize_t rc = ZSTD_decompress((char*)pOut, *pnOut, (const char*)pIn, nIn);
   assert(!ZSTD_isError(rc));
   *pnOut = rc;
   return 0;
@@ -300,7 +300,7 @@ static Py_ssize_t pylsm_csr_length(lsm_cursor* cursor, Py_ssize_t *result) {
 
 
 static Py_ssize_t pylsm_length(lsm_db* lsm, Py_ssize_t *result) {
-	int rc = 0;
+	Py_ssize_t rc = 0;
 	lsm_cursor *cursor;
 
 	if ((rc = lsm_csr_open(lsm, &cursor))) return rc;
@@ -418,7 +418,7 @@ int pylsm_slice_first(LSMSliceView* self) {
 	int cmp_res;
 
 	if (self->pStop != NULL) {
-		if ((rc = lsm_csr_cmp(self->cursor, self->pStop, self->nStop, &cmp_res))) return rc;
+		if ((rc = lsm_csr_cmp(self->cursor, self->pStop, (int) self->nStop, &cmp_res))) return rc;
 		if (self->direction == PY_LSM_SLICE_FORWARD && cmp_res > 0) return -1;
 		if (self->direction == PY_LSM_SLICE_BACKWARD && cmp_res < 0) return -1;
 	}
@@ -446,7 +446,7 @@ int pylsm_slice_next(LSMSliceView* self) {
 		if (!lsm_csr_valid(self->cursor)) break;
 
 		if (self->pStop != NULL) {
-			if ((rc = lsm_csr_cmp(self->cursor, self->pStop, self->nStop, &cmp_res))) return rc;
+			if ((rc = lsm_csr_cmp(self->cursor, self->pStop, (int) self->nStop, &cmp_res))) return rc;
 			if (self->direction == PY_LSM_SLICE_FORWARD && cmp_res > 0) break;
 			if (self->direction == PY_LSM_SLICE_BACKWARD && cmp_res < 0) break;
 		}
@@ -472,7 +472,7 @@ static int pylsm_slice_view_iter(LSMSliceView *self) {
 	int seek_mode = pylsm_seek_mode_direction(self->direction);
 
 	if (self->pStart != NULL) {
-		if ((rc = lsm_csr_seek(self->cursor, self->pStart, self->nStart, seek_mode))) return rc;
+		if ((rc = lsm_csr_seek(self->cursor, self->pStart, (int) self->nStart, seek_mode))) return rc;
 	} else {
 		switch (self->direction) {
 			case PY_LSM_SLICE_FORWARD:
@@ -560,22 +560,18 @@ static PyObject* pylsm_cursor_items_fetch(lsm_cursor* cursor, uint8_t binary) {
 	lsm_csr_key(cursor, (const void**) &pKey, &nKey);
 	lsm_csr_value(cursor, (const void**) &pValue, &nValue);
 
-	PyObject* result;
+	PyObject* pyKey;
+	PyObject* pyValue;
+
 	if (binary) {
-		result = PyTuple_Pack(
-			2, 
-			PyBytes_FromStringAndSize(pKey, nKey), 
-			PyBytes_FromStringAndSize(pValue, nValue)
-		);
+		pyKey = PyBytes_FromStringAndSize(pKey, nKey);
+		pyValue = PyBytes_FromStringAndSize(pValue, nValue);
 	} else {
-		result = PyTuple_Pack(
-			2, 
-			PyUnicode_FromStringAndSize(pKey, nKey),
-			PyUnicode_FromStringAndSize(pValue, nValue)
-		);
+		pyKey = PyUnicode_FromStringAndSize(pKey, nKey);
+		pyValue = PyUnicode_FromStringAndSize(pValue, nValue);
 	}
 
-	return result;
+	return PyTuple_Pack(2, pyKey, pyValue);
 }
 
 
@@ -621,11 +617,11 @@ static int LSMIterView_init(LSMIterView *self, LSM* lsm) {
 }
 
 
-static int LSMIterView_len(LSMIterView* self) {
+static Py_ssize_t LSMIterView_len(LSMIterView* self) {
 	if (pylsm_ensure_opened(self->db)) return -1;
 
 	Py_ssize_t result = 0;
-	int rc = 0;
+	Py_ssize_t rc = 0;
 
 	Py_BEGIN_ALLOW_THREADS
 	LSM_MutexLock(self->db);
@@ -760,7 +756,6 @@ static PyObject* LSMItemsView_next(LSMIterView *self) {
 	};
 
 	LSM_MutexLeave(self->db);
-
 	return result;
 }
 
@@ -1501,25 +1496,32 @@ static PyObject* LSM_insert(LSM *self, PyObject *args, PyObject *kwds) {
 
 	static char *kwlist[] = {"key", "value", NULL};
 
-	PyObject* key = NULL;
-	PyObject* val = NULL;
-
-	if (!PyArg_ParseTupleAndKeywords(args, kwds, "OO", kwlist, &key, &val)) return NULL;
-
 	const char* pKey = NULL;
 	Py_ssize_t nKey = 0;
 
 	const char* pVal = NULL;
 	Py_ssize_t nVal = 0;
 
-	if (str_or_bytes_check(self->binary, key, &pKey, &nKey)) return NULL;
-	if (str_or_bytes_check(self->binary, val, &pVal, &nVal)) return NULL;
+	if (self->binary) {
+		if (!PyArg_ParseTupleAndKeywords(args, kwds, "y#y#", kwlist, &pKey, &nKey, &pVal, &nVal)) return NULL;
+	} else {
+		if (!PyArg_ParseTupleAndKeywords(args, kwds, "s#s#", kwlist, &pKey, &nKey, &pVal, &nVal)) return NULL;
+	}
+
+	if (nKey >= INT_MAX) {
+		PyErr_SetString(PyExc_OverflowError, "length of key is too large");
+		return NULL;
+	}
+	if (nVal >= INT_MAX) {
+		PyErr_SetString(PyExc_OverflowError, "length of value is too large");
+		return NULL;
+	}
 
 	int result;
 
 	Py_BEGIN_ALLOW_THREADS
 	LSM_MutexLock(self);
-	result = lsm_insert(self->lsm, pKey, nKey, pVal, nVal);
+	result = lsm_insert(self->lsm, pKey, (int) nKey, pVal, (int) nVal);
 	LSM_MutexLeave(self);
 	Py_END_ALLOW_THREADS
 
@@ -1533,17 +1535,24 @@ static PyObject* LSM_delete(LSM *self, PyObject *args, PyObject *kwds) {
 
 	static char *kwlist[] = {"key", NULL};
 
-	PyObject* key = NULL;
 	const char* pKey = NULL;
 	Py_ssize_t nKey = 0;
 
-	if (!PyArg_ParseTupleAndKeywords(args, kwds, "O", kwlist, &key)) return NULL;
-	if (str_or_bytes_check(self->binary, key, &pKey, &nKey)) return NULL;
+	if (self->binary) {
+		if (!PyArg_ParseTupleAndKeywords(args, kwds, "y#", kwlist, &pKey, &nKey)) return NULL;
+	} else {
+		if (!PyArg_ParseTupleAndKeywords(args, kwds, "s#", kwlist, &pKey, &nKey)) return NULL;
+	}
+
+	if (nKey >= INT_MAX) {
+		PyErr_SetString(PyExc_OverflowError, "length of key is too large");
+		return NULL;
+	}
 
 	int result;
 	Py_BEGIN_ALLOW_THREADS
 	LSM_MutexLock(self);
-	result = lsm_delete(self->lsm, pKey, nKey);
+	result = lsm_delete(self->lsm, pKey, (int) nKey);
 	LSM_MutexLeave(self);
 	Py_END_ALLOW_THREADS
 
@@ -1557,23 +1566,31 @@ static PyObject* LSM_delete_range(LSM *self, PyObject *args, PyObject *kwds) {
 
 	static char *kwlist[] = {"start", "end", NULL};
 
-	PyObject* key_start = NULL;
-	PyObject* key_end = NULL;
+	const char* pStart = NULL;
+	Py_ssize_t nStart = 0;
 
-	const char* pKeyStart = NULL;
-	Py_ssize_t nKeyStart = 0;
+	const char* pEnd = NULL;
+	Py_ssize_t nEnd = 0;
 
-	const char* pKeyEnd = NULL;
-	Py_ssize_t nKeyEnd = 0;
+	if (self->binary) {
+		if (!PyArg_ParseTupleAndKeywords(args, kwds, "y#y#", kwlist, &pStart, &nStart, &pEnd, &nEnd)) return NULL;
+	} else {
+		if (!PyArg_ParseTupleAndKeywords(args, kwds, "s#s#", kwlist, &pStart, &nStart, &pEnd, &nEnd)) return NULL;
+	}
 
-	if (!PyArg_ParseTupleAndKeywords(args, kwds, "OO", kwlist, &key_start, &key_end)) return NULL;
-	if (str_or_bytes_check(self->binary, key_start, &pKeyStart, &nKeyStart)) return NULL;
-	if (str_or_bytes_check(self->binary, key_end, &pKeyEnd, &nKeyEnd)) return NULL;
+	if (nStart >= INT_MAX) {
+		PyErr_SetString(PyExc_OverflowError, "length of start is too large");
+		return NULL;
+	}
+	if (nEnd >= INT_MAX) {
+		PyErr_SetString(PyExc_OverflowError, "length of end is too large");
+		return NULL;
+	}
 
 	int result;
 	Py_BEGIN_ALLOW_THREADS
 	LSM_MutexLock(self);
-	result = lsm_delete_range(self->lsm, pKeyStart, nKeyStart, pKeyEnd, nKeyEnd);
+	result = lsm_delete_range(self->lsm, pStart, (int) nStart, pEnd, (int) nEnd);
 	LSM_MutexLeave(self);
 	Py_END_ALLOW_THREADS
 
@@ -1664,6 +1681,10 @@ static PyObject* LSM_getitem(LSM *self, PyObject *arg) {
 	if (pylsm_seek_mode_check(seek_mode)) return NULL;
 
 	if (str_or_bytes_check(self->binary, key, &pKey, &nKey)) return NULL;
+	if (nKey >= INT_MAX) {
+		PyErr_SetString(PyExc_OverflowError, "length of key is too large");
+		return NULL;
+	}
 
 	int result;
 	char *pValue = NULL;
@@ -1675,7 +1696,7 @@ static PyObject* LSM_getitem(LSM *self, PyObject *arg) {
 	result = pylsm_getitem(
 		self->lsm,
 		pKey,
-		nKey,
+		(int) nKey,
 		&pValue,
 		&nValue,
 		seek_mode
@@ -1745,6 +1766,15 @@ static int LSM_set_del_item(LSM* self, PyObject* key, PyObject* value) {
 		if (str_or_bytes_check(self->binary, slice->start, (const char **) &pStart, &nStart)) return -1;
 		if (str_or_bytes_check(self->binary, slice->stop, (const char **) &pStop, &nStop)) return -1;
 
+		if (nStart >= INT_MAX) {
+			PyErr_SetString(PyExc_OverflowError, "length of start is too large");
+			return -1;
+		}
+		if (nStop >= INT_MAX) {
+			PyErr_SetString(PyExc_OverflowError, "length of stop is too large");
+			return -1;
+		}
+
 		Py_INCREF(slice->start);
 		Py_INCREF(slice->stop);
 
@@ -1752,7 +1782,11 @@ static int LSM_set_del_item(LSM* self, PyObject* key, PyObject* value) {
 
 		Py_BEGIN_ALLOW_THREADS
 		LSM_MutexLock(self);
-		rc = lsm_delete_range(self->lsm, pStart, nStart, pStop, nStop);
+		rc = lsm_delete_range(
+			self->lsm,
+			pStart, (int) nStart,
+			pStop, (int) nStop
+		);
 		LSM_MutexLeave(self);
 		Py_END_ALLOW_THREADS
 
@@ -1767,12 +1801,21 @@ static int LSM_set_del_item(LSM* self, PyObject* key, PyObject* value) {
 	if (str_or_bytes_check(self->binary, key, &pKey, &nKey)) return -1;
 	if (value != NULL) { if (str_or_bytes_check(self->binary, value, &pVal, &nVal)) return -1; }
 
+	if (nKey >= INT_MAX) {
+		PyErr_SetString(PyExc_OverflowError, "length of key is too large");
+		return -1;
+	}
+	if (nVal >= INT_MAX) {
+		PyErr_SetString(PyExc_OverflowError, "length of value is too large");
+		return -1;
+	}
+
 	Py_BEGIN_ALLOW_THREADS
 	LSM_MutexLock(self);
 	if (pVal == NULL) {
-		rc = pylsm_delitem(self->lsm, pKey, nKey);
+		rc = pylsm_delitem(self->lsm, pKey, (int) nKey);
 	} else {
-		rc = lsm_insert(self->lsm, pKey, nKey, pVal, nVal);
+		rc = lsm_insert(self->lsm, pKey, (int) nKey, pVal, (int) nVal);
 	}
 	LSM_MutexLeave(self);
 	Py_END_ALLOW_THREADS
@@ -1800,11 +1843,16 @@ static int LSM_contains(LSM *self, PyObject *key) {
 
 	if (str_or_bytes_check(self->binary, key, (const char**) &pKey, &nKey)) return 0;
 
+	if (nKey >= INT_MAX) {
+		PyErr_SetString(PyExc_OverflowError, "length of key is too large");
+		return -1;
+	}
+
 	int rc;
 
 	Py_BEGIN_ALLOW_THREADS
 	LSM_MutexLock(self);
-	rc = pylsm_contains(self->lsm, pKey, nKey);
+	rc = pylsm_contains(self->lsm, pKey, (int) nKey);
 	LSM_MutexLeave(self);
 	Py_END_ALLOW_THREADS
 
@@ -1859,7 +1907,7 @@ static PyObject* LSM_repr(LSM *self) {
 
 static Py_ssize_t LSM_length(LSM *self) {
 	Py_ssize_t result = 0;
-	int rc = 0;
+	Py_ssize_t rc = 0;
 
 	Py_BEGIN_ALLOW_THREADS
 	LSM_MutexLock(self);
@@ -1969,6 +2017,11 @@ static PyObject* LSM_update(LSM* self, PyObject *args) {
 			break;
 		}
 
+		if (key_sizes[count] >= INT_MAX) {
+			PyErr_SetString(PyExc_OverflowError, "length of key is too large");
+			return NULL;
+		}
+
 		keys_objects[count] = obj;
 		Py_INCREF(obj);
 
@@ -1977,6 +2030,11 @@ static PyObject* LSM_update(LSM* self, PyObject *args) {
 			Py_DECREF(item);
 			is_ok = 0;
 			break;
+		}
+
+		if (value_sizes[count] >= INT_MAX) {
+			PyErr_SetString(PyExc_OverflowError, "length of value is too large");
+			return NULL;
 		}
 
 		values_objects[count] = obj;
@@ -1992,7 +2050,7 @@ static PyObject* LSM_update(LSM* self, PyObject *args) {
 		Py_BEGIN_ALLOW_THREADS
 		LSM_MutexLock(self);
 		for (int i=0; i < mapping_size; i++) {
-			if ((rc = lsm_insert(self->lsm, keys[i], key_sizes[i], values[i], value_sizes[i]))) break;
+			if ((rc = lsm_insert(self->lsm, keys[i], (int) key_sizes[i], values[i], (int) value_sizes[i]))) break;
 		}
 		LSM_MutexLeave(self);
 		Py_END_ALLOW_THREADS
@@ -2428,9 +2486,14 @@ static PyObject* LSMCursor_seek(LSMCursor *self, PyObject* args, PyObject* kwds)
 	int rc;
 
 	if (str_or_bytes_check(self->db->binary, key, &pKey, &nKey)) return NULL;
+
+	if (nKey >= INT_MAX) {
+		PyErr_SetString(PyExc_OverflowError, "length of key is too large");
+		return NULL;
+	}
 	Py_BEGIN_ALLOW_THREADS
 	LSM_MutexLock(self->db);
-	rc = lsm_csr_seek(self->cursor, pKey, nKey, self->seek_mode);
+	rc = lsm_csr_seek(self->cursor, pKey, (int) nKey, self->seek_mode);
 	LSM_MutexLeave(self->db);
 	Py_END_ALLOW_THREADS
 
@@ -2458,8 +2521,13 @@ static PyObject* LSMCursor_compare(LSMCursor *self, PyObject* args, PyObject* kw
 	int cmp_result = 0;
 	int result;
 
+	if (nKey >= INT_MAX) {
+		PyErr_SetString(PyExc_OverflowError, "length of key is too large");
+		return NULL;
+	}
+
 	LSM_MutexLock(self->db);
-	result = lsm_csr_cmp(self->cursor, pKey, nKey, &cmp_result);
+	result = lsm_csr_cmp(self->cursor, pKey, (int) nKey, &cmp_result);
 	LSM_MutexLeave(self->db);
 
 	if (pylsm_error(result)) return NULL;
