@@ -571,7 +571,10 @@ static PyObject* pylsm_cursor_items_fetch(lsm_cursor* cursor, uint8_t binary) {
 		pyValue = PyUnicode_FromStringAndSize(pValue, nValue);
 	}
 
-	return PyTuple_Pack(2, pyKey, pyValue);
+	PyObject* result = PyTuple_Pack(2, pyKey, pyValue);
+	Py_DECREF(pyKey);
+	Py_DECREF(pyValue);
+	return result;
 }
 
 
