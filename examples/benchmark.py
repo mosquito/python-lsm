@@ -475,7 +475,10 @@ if __name__ == "__main__":
     )
     logging.getLogger().handlers.clear()
     logging.getLogger().handlers.append(
-        RichHandler(rich_tracebacks=True, tracebacks_show_locals=True)
+        RichHandler(
+            rich_tracebacks=True,
+            tracebacks_show_locals=True
+        )
     )
 
     main()
