@@ -1162,7 +1162,7 @@ static int LSM_init(LSM *self, PyObject *args, PyObject *kwds) {
 	if (!(
 		is_power_of_two(self->block_size) &&
 		self->block_size >= 64 &&
-		self->block_size < 65536
+		self->block_size < 65537
 	)) {
 		PyErr_Format(
 			PyExc_ValueError,
@@ -1398,6 +1398,98 @@ static PyObject* LSM_info(LSM *self) {
 		"checkpoint_size_result", checkpoint_size,
 		"tree_size", "old", tree_size_old, "current", tree_size_current
 	);
+}
+
+
+static PyObject* LSM_db_structure(LSM *self) {
+	if (pylsm_ensure_opened(self)) return NULL;
+
+	LSM_MutexLock(self);
+
+	char *lsm_result;
+
+	Py_BEGIN_ALLOW_THREADS
+	if (pylsm_error(lsm_info(self->lsm, LSM_INFO_DB_STRUCTURE, &lsm_result))) return NULL;
+	Py_END_ALLOW_THREADS
+
+	long long segment;
+	long long first_page;
+	long long last_page;
+	long long root_page;
+	long long total_pages;
+
+	char *buffer = lsm_result;
+
+	PyObject* result = PyList_New(0);
+
+	while (buffer != NULL) {
+		sscanf(buffer, "{%lld {%lld %lld %lld %lld}}", &segment, &first_page, &last_page, &root_page, &total_pages);
+		buffer = strstr(buffer, "} {");
+		if (buffer != NULL) buffer = &buffer[2];
+
+		if (
+			PyList_Append(
+				result, 
+				Py_BuildValue(
+					"{sLsLs{sLsLsL}}",
+					"segment", segment,
+					"total_pages", total_pages,
+					"page", "first", first_page,
+									"last", last_page,
+									"root", root_page
+				)
+			)
+		) {
+			lsm_free(self->lsm_env, lsm_result);
+			LSM_MutexLeave(self);
+			return NULL;
+		}
+	}
+
+	lsm_free(self->lsm_env, lsm_result);
+	LSM_MutexLeave(self);
+
+	return result;
+}
+
+
+static PyObject* LSM_array_pages(LSM *self, PyObject *args, PyObject *kwds) {
+	if (pylsm_ensure_opened(self)) return NULL;
+
+	static char *kwlist[] = {"page_first", NULL};	
+
+	int64_t nSegment = 0;
+	if (!PyArg_ParseTupleAndKeywords(args, kwds, "l", kwlist, &nSegment)) return NULL;
+
+	char *lsm_result;
+
+	LSM_MutexLock(self);
+	if (pylsm_error(lsm_info(self->lsm, LSM_INFO_ARRAY_PAGES, nSegment, &lsm_result))) {
+		LSM_MutexLeave(self);
+		return NULL;
+	}
+
+	PyObject* result = PyList_New(0);
+
+	long long page;
+	char *buffer = lsm_result;
+
+	while (buffer != NULL) {
+		sscanf(buffer, "%lld", &page);
+		buffer = strstr(buffer, " ");
+		if (buffer != NULL) buffer++;
+
+		if (PyList_Append(result, PyLong_FromLongLong(page))) {
+			lsm_free(self->lsm_env, lsm_result);
+			LSM_MutexLeave(self);
+			return NULL;
+		}
+	}
+
+	lsm_free(self->lsm_env, lsm_result);
+	LSM_MutexLeave(self);
+
+	return result;
 }
 
 
@@ -2241,6 +2333,16 @@ static PyMethodDef LSM_methods[] = {
 		"info",
 		(PyCFunction) LSM_info, METH_NOARGS,
 		"Database info"
+	},
+	{
+		"structure",
+		(PyCFunction) LSM_db_structure, METH_NOARGS,
+		"Database structure"
+	},
+	{
+		"pages",
+		(PyCFunction) LSM_array_pages, METH_VARARGS | METH_KEYWORDS,
+		"Segment pages"
 	},
 	{
 		"work",
