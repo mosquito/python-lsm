@@ -1,6 +1,6 @@
 from typing import (
-    Any, Callable, Dict, Union, Optional, Tuple,
-    KeysView, ValuesView, ItemsView, Mapping
+    Any, Callable, Dict, Union, Optional, Tuple, List,
+    KeysView, ValuesView, ItemsView, Mapping, TypedDict
 )
 
 SAFETY_OFF: int
@@ -15,6 +15,18 @@ SEEK_EQ: int
 SEEK_LE: int
 SEEK_GE: int
 SEEK_LEFAST: int
+
+
+class _DBStructurePage(TypedDict):
+    first: int
+    last: int
+    root: int
+
+
+class _DBStructure(TypedDict):
+    segment: int
+    total_pages: int
+    page: _DBStructurePage
 
 
 class Transaction:
@@ -119,3 +131,5 @@ class LSM:
     def transaction(self) -> Transaction: ...
     def tx(self) -> Transaction: ...
     def __len__(self) -> int: ...
+    def structure(self) -> _DBStructure: ...
+    def pages(selt, page_first: int) -> List[int]: ...
