@@ -1458,7 +1458,7 @@ static PyObject* LSM_array_pages(LSM *self, PyObject *args, PyObject *kwds) {
 
 	static char *kwlist[] = {"page_first", NULL};	
 
-	int64_t nSegment = 0;
+	long long nSegment = 0;
 	if (!PyArg_ParseTupleAndKeywords(args, kwds, "l", kwlist, &nSegment)) return NULL;
 
 	char *lsm_result;
@@ -1486,6 +1486,30 @@ static PyObject* LSM_array_pages(LSM *self, PyObject *args, PyObject *kwds) {
 		}
 	}
 
+	lsm_free(self->lsm_env, lsm_result);
+	LSM_MutexLeave(self);
+
+	return result;
+}
+
+
+static PyObject* LSM_page_dump(LSM *self, PyObject *args, PyObject *kwds) {
+	if (pylsm_ensure_opened(self)) return NULL;
+
+	static char *kwlist[] = {"page", NULL};	
+
+	long long nPage = 0;
+	if (!PyArg_ParseTupleAndKeywords(args, kwds, "l", kwlist, &nPage)) return NULL;
+
+	char *lsm_result;
+
+	LSM_MutexLock(self);
+	if (pylsm_error(lsm_info(self->lsm, LSM_INFO_PAGE_HEX_DUMP, nPage, &lsm_result))) {
+		LSM_MutexLeave(self);
+		return NULL;
+	}
+
+	PyObject* result = PyUnicode_FromString(lsm_result);
 	lsm_free(self->lsm_env, lsm_result);
 	LSM_MutexLeave(self);
 
@@ -2012,7 +2036,7 @@ static Py_ssize_t LSM_length(LSM *self) {
 	LSM_MutexLeave(self);
 	Py_END_ALLOW_THREADS
 
-	if (rc) return -1;
+	if (pylsm_error(rc)) return -1;
 	return result;
 }
 
@@ -2343,6 +2367,11 @@ static PyMethodDef LSM_methods[] = {
 		"pages",
 		(PyCFunction) LSM_array_pages, METH_VARARGS | METH_KEYWORDS,
 		"Segment pages"
+	},
+	{
+		"page_dump",
+		(PyCFunction) LSM_page_dump, METH_VARARGS | METH_KEYWORDS,
+		"Dump the page content as human readable text."
 	},
 	{
 		"work",
