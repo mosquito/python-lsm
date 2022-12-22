@@ -13,10 +13,10 @@ libraries = []
 extra_link_args = []
 
 if platform.system() == 'Darwin':
-    extra_link_args += ['-Wl,-s']
+    extra_link_args += ['-Wl']
 
 if platform.system() == 'Linux':
-    extra_link_args += ['-Wl,--strip-all']
+    extra_link_args += ['-Wl']
 
 if platform.system() in ("Darwin", "Linux"):
     define_macros.append(('LSM_MUTEX_PTHREADS', None))
