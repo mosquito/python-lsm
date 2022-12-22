@@ -934,13 +934,14 @@ static LSMSliceView* LSMSliceView_iter(LSMSliceView* self) {
 
 	self->state = PY_LSM_OPENED;
 
+	int err;
 	Py_BEGIN_ALLOW_THREADS
 	LSM_MutexLock(self->db);
-
-	if (pylsm_error(pylsm_slice_view_iter(self))) return NULL;
-
+	err = pylsm_slice_view_iter(self);
 	LSM_MutexLeave(self->db);
 	Py_END_ALLOW_THREADS
+
+	if (pylsm_error(err)) return NULL;
 
 	Py_INCREF(self);
 	return self;
@@ -2593,11 +2594,14 @@ static PyObject* LSMCursor_next(LSMCursor *self) {
 	if (self->seek_mode == LSM_SEEK_EQ) Py_RETURN_FALSE;
 	if (!lsm_csr_valid(self->cursor)) Py_RETURN_FALSE;
 
+	int err;
 	Py_BEGIN_ALLOW_THREADS
 	LSM_MutexLock(self->db);
-	if (pylsm_error(lsm_csr_next(self->cursor))) return NULL;
+	err = lsm_csr_next(self->cursor);
 	LSM_MutexLeave(self->db);
 	Py_END_ALLOW_THREADS
+
+	if (pylsm_error(err)) return NULL;
 
 	if (!lsm_csr_valid(self->cursor)) Py_RETURN_FALSE;
 	Py_RETURN_TRUE;
@@ -2617,12 +2621,14 @@ static PyObject* LSMCursor_previous(LSMCursor *self) {
 
 	if (!lsm_csr_valid(self->cursor)) Py_RETURN_FALSE;
 
+	int err;
 	Py_BEGIN_ALLOW_THREADS
 	LSM_MutexLock(self->db);
-	if (pylsm_error(lsm_csr_prev(self->cursor))) return NULL;
+	err = lsm_csr_prev(self->cursor);
 	LSM_MutexLeave(self->db);
 	Py_END_ALLOW_THREADS
 
+	if (pylsm_error(err)) return NULL;
 	if (!lsm_csr_valid(self->cursor)) Py_RETURN_FALSE;
 	Py_RETURN_TRUE;
 }
@@ -2701,11 +2707,13 @@ static PyObject* LSMCursor_iter_next(LSMCursor* self) {
 		return NULL;
 	}
 
+	int err;
 	Py_BEGIN_ALLOW_THREADS
-	if (pylsm_error(lsm_csr_next(self->cursor))) return NULL;
+	err = lsm_csr_next(self->cursor);
 	Py_END_ALLOW_THREADS
 	LSM_MutexLeave(self->db);
 
+	if (pylsm_error(err)) return NULL;
 	return result;
 }
 
