@@ -10,13 +10,7 @@ module_name = "lsm"
 define_macros = []
 compiller_args = []
 libraries = []
-extra_link_args = []
 
-if platform.system() == 'Darwin':
-    extra_link_args += ['-Wl']
-
-if platform.system() == 'Linux':
-    extra_link_args += ['-Wl']
 
 if platform.system() in ("Darwin", "Linux"):
     define_macros.append(('LSM_MUTEX_PTHREADS', None))
@@ -92,7 +86,7 @@ def library_sources():
 
 setup(
     name=module_name,
-    version="0.4.5",
+    version="0.4.6",
     ext_modules=[
         Extension(
             "lsm",
@@ -101,7 +95,6 @@ setup(
             define_macros=define_macros,
             libraries=libraries,
             extra_compile_args=compiller_args,
-            extra_link_args=extra_link_args,
         ),
     ],
     include_package_data=True,
@@ -128,10 +121,11 @@ setup(
         "Operating System :: Microsoft",
         "Operating System :: POSIX",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.6",
         "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
         "Programming Language :: Python :: Implementation :: CPython",
         "Programming Language :: Python",
         "Topic :: Database :: Database Engines/Servers",
@@ -144,7 +138,7 @@ setup(
             "lsm-tool = lsm_tool:main"
         ]
     },
-    python_requires=">=3.6.*, <4",
+    python_requires=">=3.7.*, <4",
     extras_require={
         "develop": [
             "pytest",
