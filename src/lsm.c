@@ -1162,7 +1162,7 @@ static int LSM_init(LSM *self, PyObject *args, PyObject *kwds) {
 	if (!(
 		is_power_of_two(self->block_size) &&
 		self->block_size >= 64 &&
-		self->block_size < 65536
+		self->block_size < 65537
 	)) {
 		PyErr_Format(
 			PyExc_ValueError,
@@ -1920,7 +1920,7 @@ static Py_ssize_t LSM_length(LSM *self) {
 	LSM_MutexLeave(self);
 	Py_END_ALLOW_THREADS
 
-	if (rc) return -1;
+	if (pylsm_error(rc)) return -1;
 	return result;
 }
 
