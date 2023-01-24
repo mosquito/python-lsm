@@ -632,7 +632,7 @@ static Py_ssize_t LSMIterView_len(LSMIterView* self) {
 	LSM_MutexLeave(self->db);
 	Py_END_ALLOW_THREADS
 
-	if (rc) return -1;
+	if (pylsm_error(rc)) return -1;
 	return result;
 }
 
