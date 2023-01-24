@@ -86,7 +86,7 @@ def library_sources():
 
 setup(
     name=module_name,
-    version="0.4.6",
+    version="0.4.7",
     ext_modules=[
         Extension(
             "lsm",
