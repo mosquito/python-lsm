@@ -35,9 +35,6 @@ jobs:
           - python: '3.11'
             toxenv: py311
             os: ubuntu-latest
-          - python: '3.6'
-            toxenv: py36
-            os: macos-latest
           - python: '3.7'
             toxenv: py37
             os: macos-latest
