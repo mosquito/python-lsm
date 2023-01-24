@@ -1,7 +1,7 @@
 import struct
 
 import pytest
-from lsm import LSM, SEEK_LE, SEEK_GE, SEEK_EQ
+from lsm import LSM, SEEK_LE, SEEK_GE, SEEK_EQ, SEEK_LEFAST
 
 from tests import comp_algo
 
@@ -87,6 +87,9 @@ def test_insert_select(subtests, db):
     with subtests.test("select ['k90xx', SEEK_LE]"):
         assert db['k90xx', SEEK_LE] == '90'
 
+    with subtests.test("select ['k90xx', SEEK_LEFAST]"):
+        assert db['k90xx', SEEK_LEFAST]
+
     with subtests.test("select ['k90xx', SEEK_GE]"):
         assert db['k90xx', SEEK_GE] == '91'
 
@@ -124,3 +127,16 @@ def test_info(comp, tmp_path):
         assert 'nread' in info
         assert 'nwrite' not in info
         assert 'tree_size' not in info
+
+
+@pytest.mark.parametrize("comp", comp_algo)
+def test_len(comp, tmp_path):
+    with LSM(tmp_path / ("test.lsm." + comp), compress=comp,
+             binary=False) as db:
+        for i in map(str, range(10000)):
+            db[i] = i
+
+        assert len(db) == 10000
+        assert len(db.keys()) == 10000
+        assert len(db.values()) == 10000
+        assert len(db.items()) == 10000

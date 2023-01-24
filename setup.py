@@ -132,10 +132,11 @@ setup(
         "Topic :: Database",
         "Topic :: Software Development :: Libraries",
         "Topic :: Software Development",
+        "Typing :: Typed",
     ],
     entry_points={
         "console_scripts": [
-            "lsm-tool = lsm_tool:main"
+            "lsm-tool = lsm_tool.__main__:main"
         ]
     },
     python_requires=">=3.7.*, <4",
@@ -143,6 +144,7 @@ setup(
         "develop": [
             "pytest",
             "pytest-subtests",
+            "markdown-pytest",
         ],
     },
 )

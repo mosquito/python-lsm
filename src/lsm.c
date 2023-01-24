@@ -333,6 +333,13 @@ static int pylsm_getitem(
 		lsm_csr_close(cursor);
 		return -1;
 	}
+
+	if (seek_mode == LSM_SEEK_LEFAST) {
+		*pnVal = 0;
+		lsm_csr_close(cursor);
+		return rc;
+	}
+
 	if ((rc = lsm_csr_value(cursor, (const void **)&pValue, &nValue))) {
 		lsm_csr_close(cursor);
 		return rc;
@@ -1718,6 +1725,7 @@ static PyObject* LSM_getitem(LSM *self, PyObject *arg) {
 		if (pValue != NULL) free(pValue);
 		return NULL;
 	}
+	if (pValue == NULL) Py_RETURN_TRUE;
 
 	if (pylsm_error(result)) {
 		if (pValue != NULL) free(pValue);

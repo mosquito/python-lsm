@@ -121,12 +121,14 @@ are searching for does not exist:
 
 ```python
 
->>> from lsm import, LSM, SEEK_LE, SEEK_GE
+>>> from lsm import, LSM, SEEK_LE, SEEK_GE, SEEK_LEFAST
 >>> db = LSM("/tmp/test.ldb", binary=False)
 >>> db.open()
 True
 >>> db['k1xx', SEEK_LE]  # Here we will match "k1".
 '1'
+>>> db['k1xx', SEEK_LEFAST]  # Here we will match "k1" but do not fetch a value
+True
 >>> db['k1xx', SEEK_GE]  # Here we will match "k2".
 '2'
 ```
