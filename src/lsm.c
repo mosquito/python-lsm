@@ -1628,21 +1628,55 @@ static PyObject* LSM_begin(LSM *self) {
 }
 
 
-static PyObject* LSM_commit(LSM *self) {
+static PyObject* LSM_commit_inner(LSM *self, int tx_level) {
 	if (pylsm_ensure_writable(self)) return NULL;
 
-	self->tx_level--;
+	debug("committing %d", tx_level);
 
 	int result;
 	Py_BEGIN_ALLOW_THREADS
 	LSM_MutexLock(self);
-	result = lsm_commit(self->lsm, self->tx_level);
+	result = lsm_commit(self->lsm, tx_level);
 	LSM_MutexLeave(self);
 	Py_END_ALLOW_THREADS
 
 	if (pylsm_error(result)) return NULL;
-	if (self->tx_level < 0) self->tx_level = 0;
 	Py_RETURN_TRUE;
+}
+
+
+static PyObject* LSM_rollback_inner(LSM *self, int tx_level) {
+	if (pylsm_ensure_writable(self)) return NULL;
+
+	debug("rolling back %d", tx_level);
+
+	int result;
+	Py_BEGIN_ALLOW_THREADS
+	LSM_MutexLock(self);
+	result = lsm_rollback(self->lsm, tx_level);
+	LSM_MutexLeave(self);
+	Py_END_ALLOW_THREADS
+
+	if (pylsm_error(result)) return NULL;
+	Py_RETURN_TRUE;
+}
+
+
+
+static PyObject* LSM_commit(LSM *self) {
+	self->tx_level--;
+	if (self->tx_level < 0) self->tx_level = 0;
+	return LSM_commit_inner(self, self->tx_level);
+}
+
+
+static PyObject* LSM_rollback(LSM *self) {
+	PyObject* result = LSM_rollback_inner(self, self->tx_level);
+
+	self->tx_level--;
+	if (self->tx_level < 0) self->tx_level = 0;
+
+	return result;
 }
 
 
@@ -1873,23 +1907,6 @@ static int LSM_contains(LSM *self, PyObject *key) {
 
 	pylsm_error(rc);
 	return -1;
-}
-
-
-static PyObject* LSM_rollback(LSM *self) {
-	if (pylsm_ensure_writable(self)) return NULL;
-
-	int result;
-	Py_BEGIN_ALLOW_THREADS
-	LSM_MutexLock(self);
-	result = lsm_rollback(self->lsm, self->tx_level);
-	LSM_MutexLeave(self);
-	Py_END_ALLOW_THREADS
-
-	self->tx_level--;
-	if (pylsm_error(result)) return NULL;
-	if (self->tx_level < 0) self->tx_level = 0;
-	Py_RETURN_TRUE;
 }
 
 
@@ -2515,11 +2532,6 @@ static PyObject* LSMCursor_seek(LSMCursor *self, PyObject* args, PyObject* kwds)
 
 
 static PyObject* LSMCursor_compare(LSMCursor *self, PyObject* args, PyObject* kwds) {
-	if (self->state == PY_LSM_ITERATING) {
-		PyErr_SetString(PyExc_RuntimeError, "can not change cursor during iteration");
-		return NULL;
-	}
-
 	if (pylsm_ensure_csr_opened(self)) return NULL;
 	static char *kwlist[] = {"key", NULL};
 
@@ -2541,6 +2553,8 @@ static PyObject* LSMCursor_compare(LSMCursor *self, PyObject* args, PyObject* kw
 	LSM_MutexLock(self->db);
 	result = lsm_csr_cmp(self->cursor, pKey, (int) nKey, &cmp_result);
 	LSM_MutexLeave(self->db);
+
+	if (self->seek_mode == LSM_SEEK_GE) cmp_result = -cmp_result;
 
 	if (pylsm_error(result)) return NULL;
 	return Py_BuildValue("i", cmp_result);
@@ -2853,6 +2867,10 @@ static PyObject* LSMTransaction_ctx_enter(LSMTransaction *self) {
 }
 
 
+static PyObject* LSMTransaction_commit(LSMTransaction *self);
+static PyObject* LSMTransaction_rollback(LSMTransaction *self);
+
+
 static PyObject* LSMTransaction_ctx_exit(
 	LSMTransaction *self,
 	PyObject *exc_type,
@@ -2863,12 +2881,12 @@ static PyObject* LSMTransaction_ctx_exit(
 
 	self->state = PY_LSM_CLOSED;
 
-	if (self->tx_level != self->db->tx_level) Py_RETURN_NONE;
+//	if (self->tx_level < self->db->tx_level) Py_RETURN_NONE;
 
 	if (exc_type != Py_None) {
-		LSM_rollback(self->db);
+		LSMTransaction_commit(self);
 	} else {
-		LSM_commit(self->db);
+		LSMTransaction_rollback(self);
 	}
 
 	if (PyErr_Occurred()) return NULL;
@@ -2879,13 +2897,13 @@ static PyObject* LSMTransaction_ctx_exit(
 
 static PyObject* LSMTransaction_commit(LSMTransaction *self) {
 	self->state = PY_LSM_CLOSED;
-	return LSM_commit(self->db);
+	return LSM_commit_inner(self->db, self->tx_level);
 }
 
 
 static PyObject* LSMTransaction_rollback(LSMTransaction *self) {
 	self->state = PY_LSM_CLOSED;
-	return LSM_rollback(self->db);
+	return LSM_rollback_inner(self->db, self->tx_level);
 }
 
 

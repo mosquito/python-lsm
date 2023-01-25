@@ -40,21 +40,29 @@ basic features and functionality of the ``lsm`` Python library.
 To begin, instantiate a `LSM` object, specifying a path to a database file.
 
 ```python
-
->>> from lsm import LSM
->>> db = LSM('test.ldb')
->>> db.open()
->>> print(db)
-<LSM at "/tmp/test.ldb" as 0x10951e450>
+from lsm import LSM
+db = LSM('/tmp/test.ldb')
+assert db.open()
 ```
 
 More pythonic variant is using context manager:
 
 ```python
->>> from lsm import LSM
->>> with LSM("/tmp/test.ldb") as db:
-...     print(db)
-<LSM at "/tmp/test.ldb" as 0x10951e450>
+from lsm import LSM
+with LSM("/tmp/test.ldb") as db:
+    assert db.info()
+```
+
+Not opened database will raise a RuntimeError:
+
+```python
+import pytest
+from lsm import LSM
+
+db = LSM('/tmp/test.ldb')
+
+with pytest.raises(RuntimeError):
+    db.info()
 ```
 
 ### Binary/string mode
@@ -65,21 +73,21 @@ argument.
 For example when you want to store strings just pass ``binary=False``:
 
 ```python
->>> from lsm import LSM
->>> with LSM("/tmp/test.ldb", binary=False) as db:
-...    db['foo'] = 'bar'   # must be str for keys and values
-...    print(db['foo'])
-bar
+from lsm import LSM
+with LSM("/tmp/test_0.ldb", binary=False) as db:
+    # must be str for keys and values
+    db['foo'] = 'bar'
+    assert db['foo'] == "bar"
 ```
 
 Otherwise, you must pass keys and values ad ``bytes`` (default behaviour):
 
 ```python
->>> from lsm import LSM
->>> with LSM("/tmp/test.ldb") as db:
-...    db[b'foo'] = b'bar'   # must be bytes for keys and values
-...    print(db[b'foo'])
-b'bar'
+from lsm import LSM
+
+with LSM("/tmp/test.ldb") as db:
+    db[b'foo'] = b'bar'
+    assert db[b'foo'] == b'bar'
 ```
 
 ### Key/Value Features
@@ -87,50 +95,56 @@ b'bar'
 ``lsm`` is a key/value store, and has a dictionary-like API:
 
 ```python
->>> from lsm import LSM
->>> with LSM("/tmp/test.ldb", binary=False) as db:
-...    db['foo'] = 'bar'
-...    print(db['foo'])
-bar
+from lsm import LSM
+with LSM("/tmp/test.ldb", binary=False) as db:
+    db['foo'] = 'bar'
+    assert db['foo'] == 'bar'
 ```
 
 Database apply changes as soon as possible:
 
 ```python
->>> from lsm import LSM
->>> db = LSM("/tmp/test.ldb", binary=False)
->>> db.open()
-True
->>> for i in range(4):
-...     db[f'k{i}'] = str(i)
-...
->>> 'k3' in db
-True
->>> 'k4' in db
-False
->>> del db['k3']
->>> db['k3']
-Traceback (most recent call last):
-  File "<stdin>", line 1, in <module>
-KeyError: "Key 'k3' was not found"
+import pytest
+from lsm import LSM
+
+with LSM("/tmp/test.ldb", binary=False) as db:
+    for i in range(4):
+         db[f'k{i}'] = str(i)
+
+    assert 'k3' in db
+    assert 'k4' not in db
+    del db['k3']
+
+    with pytest.raises(KeyError):
+        print(db['k3'])
 ```
 
-By default when you attempt to look up a key, ``lsm`` will search for an
+By default, when you attempt to look up a key, ``lsm`` will search for an
 exact match. You can also search for the closest key, if the specific key you
 are searching for does not exist:
 
 ```python
+import pytest
+from lsm import LSM, SEEK_LE, SEEK_GE, SEEK_LEFAST
 
->>> from lsm import, LSM, SEEK_LE, SEEK_GE, SEEK_LEFAST
->>> db = LSM("/tmp/test.ldb", binary=False)
->>> db.open()
-True
->>> db['k1xx', SEEK_LE]  # Here we will match "k1".
-'1'
->>> db['k1xx', SEEK_LEFAST]  # Here we will match "k1" but do not fetch a value
-True
->>> db['k1xx', SEEK_GE]  # Here we will match "k2".
-'2'
+
+with LSM("/tmp/test.ldb", binary=False) as db:
+    for i in range(4):
+        db[f'k{i}'] = str(i)
+
+    # Here we will match "k1".
+    assert db['k1xx', SEEK_LE] == '1'
+
+    # Here we will match "k1" but do not fetch a value
+    # In this case the value will always be ``True`` or there will
+    # be an exception if the key is not found
+    assert db['k1xx', SEEK_LEFAST] is True
+
+    with pytest.raises(KeyError):
+        print(db['000', SEEK_LEFAST])
+
+    # Here we will match "k2".
+    assert db['k1xx', SEEK_GE] == "2"
 ```
 
 `LSM` supports other common dictionary methods such as:
@@ -140,6 +154,7 @@ True
 * `items()`
 * `update()`
 
+
 ### Slices and Iteration
 
 The database can be iterated through directly, or sliced. When you are slicing
@@ -148,51 +163,55 @@ closest key (details can be found in the [LSM.fetch_range()](https://lsm-db.read
 documentation).
 
 ```python
+from lsm import LSM
 
->>> [item for item in db.items()]
-[('foo', 'bar'), ('k0', '0'), ('k1', '1'), ('k2', '2')]
+with LSM("/tmp/test_slices.ldb", binary=False) as db:
+    db['foo'] = 'bar'
 
->>> db['k0':'k99']
-<lsm_slice object at 0x10d4f3500>
+    for i in range(3):
+        db[f'k{i}'] = str(i)
 
->>> list(db['k0':'k99'])
-[('k0', '0'), ('k1', '1'), ('k2', '2')]
+    # Can easily iterate over the database items
+    assert (
+        sorted(item for item in db.items()) == [
+            ('foo', 'bar'), ('k0', '0'), ('k1', '1'), ('k2', '2')
+        ]
+    )
+
+    # However, you will not read the entire database into memory, as special
+    # iterator objects are used.
+    assert str(db['k0':'k99']).startswith("<lsm_slice object at")
+
+    # But you can cast it to the list for example
+    assert list(db['k0':'k99']) == [('k0', '0'), ('k1', '1'), ('k2', '2')]
 ```
 
 You can use open-ended slices. If the lower- or upper-bound is outside the
 range of keys an empty list is returned.
 
+
 ```python
+from lsm import LSM
 
->>> list(db['k0':])
-[('k0', '0'), ('k1', '1'), ('k2', '2')]
-
->>> list(db[:'k1'])
-[('foo', 'bar'), ('k0', '0'), ('k1', '1')]
-
->>> list(db[:'aaa'])
-[]
+with LSM("/tmp/test_slices.ldb", binary=False) as db:
+    assert list(db['k0':]) == [('k0', '0'), ('k1', '1'), ('k2', '2')]
+    assert list(db[:'k1']) == [('foo', 'bar'), ('k0', '0'), ('k1', '1')]
+    assert list(db[:'aaa']) == []
 ```
 
-To retrieve keys in reverse order or stepping over more then one item,
+To retrieve keys in reverse order or stepping over more than one item,
 simply use a third slice argument as usual.
 Negative step value means reverse order, but first and second arguments
-must be ordinary ordered.
+must be ordinarily ordered.
 
 ```python
+from lsm import LSM
 
->>> list(db['k0':'k99':2])
-[('k0', '0'), ('k2', '2')]
-
->>> list(db['k0'::-1])
-[('k2', '2'), ('k1', '1'), ('k0', '0')]
-
->>> list(db['k0'::-2])
-[('k2', '2'), ('k0', '0')]
-
-
->>> list(db['k0'::3])
-[('k0', '0')]
+with LSM("/tmp/test_slices.ldb", binary=False) as db:
+    assert list(db['k0':'k99':2]) == [('k0', '0'), ('k2', '2')]
+    assert list(db['k0'::-1]) == [('k2', '2'), ('k1', '1'), ('k0', '0')]
+    assert list(db['k0'::-2]) == [('k2', '2'), ('k0', '0')]
+    assert list(db['k0'::3]) == [('k0', '0')]
 ```
 
 You can also **delete** slices of keys, but note that the delete **will not**
@@ -200,10 +219,13 @@ include the keys themselves:
 
 ```python
 
->>> del db['k0':'k99']
+from lsm import LSM
 
->>> list(db)  # Note that 'k0' still exists.
-[('foo', 'bar'), ('k0', '0')]
+with LSM("/tmp/test_slices.ldb", binary=False) as db:
+    del db['k0':'k99']
+
+    # Note that 'k0' still exists.
+    assert list(db.items()) == [('foo', 'bar'), ('k0', '0')]
 ```
 
 ### Cursors
@@ -212,33 +234,61 @@ While slicing may cover most use-cases, for finer-grained control you can use
 cursors for traversing records.
 
 ```python
+from lsm import LSM, SEEK_GE, SEEK_LE
 
->>> with db.cursor() as cursor:
-...     for key, value in cursor:
-...         print(key, '=>', value)
-...
-foo => bar
-k0 => 0
+with LSM("/tmp/test_cursors.ldb", binary=False) as db:
+    del db["a":"z"]
+    db["spam"] = "spam"
 
->>> db.update({'k1': '1', 'k2': '2', 'k3': '3', 'foo': 'bar'})
+    with db.cursor() as cursor:
+        for key, value in cursor:
+            assert key ==  value
 
->>> with db.cursor() as cursor:
-...     cursor.first()
-...     print(cursor.key())
-...     cursor.last()
-...     print(cursor.key())
-...     cursor.previous()
-...     print(cursor.key())
-...
-foo
-k3
-k2
+    db.update({'k0': '0', 'k1': '1', 'k2': '2', 'k3': '3', 'foo': 'bar'})
 
->>> with db.cursor() as cursor:
-...     cursor.seek('k0', SEEK_GE)
-...     print(list(cursor.fetch_until('k99')))
-...
-[('k0', '0'), ('k1', '1'), ('k2', '2'), ('k3', '3')]
+    with db.cursor() as cursor:
+
+        cursor.first()
+        key, value = cursor.retrieve()
+        assert key == "foo"
+        assert value == "bar"
+
+        cursor.last()
+        key, value = cursor.retrieve()
+        assert key == "spam"
+        assert value == "spam"
+
+        cursor.previous()
+        key, value = cursor.retrieve()
+        assert key == "k3"
+        assert value == "3"
+
+    # Finding the first match that is greater than or equal to 'k0'
+    # and move forward until the key is less than 'k99'
+    with db.cursor() as cursor:
+        cursor.seek("k0", SEEK_GE)
+        results = []
+
+        while cursor.compare("k99") > 0:
+            key, value = cursor.retrieve()
+            results.append((key, value))
+            cursor.next()
+
+    assert results == [('k0', '0'), ('k1', '1'), ('k2', '2'), ('k3', '3')]
+
+    # Finding the last match that is lower than or equal to 'k99'
+    # and move backward until the key is less than 'k0'
+    with db.cursor() as cursor:
+        cursor.seek("k99", SEEK_LE)
+        results = []
+
+        while cursor.compare("k0") >= 0:
+            print(cursor.retrieve())
+            key, value = cursor.retrieve()
+            results.append((key, value))
+            cursor.previous()
+
+    assert results == [('k3', '3'), ('k2', '2'), ('k1', '1'), ('k0', '0')]
 ```
 
 It is very important to close a cursor when you are through using it. For this
@@ -253,52 +303,72 @@ decorator.
 
 ```python
 
->>> with db.transaction() as txn:
-...     db['k1'] = '1-mod'
-...     with db.transaction() as txn2:
-...         db['k2'] = '2-mod'
-...         txn2.rollback()
-...
-True
->>> print(db['k1'], db['k2'])
-1-mod 2
+from lsm import LSM
+
+with LSM("/tmp/test_tx.ldb", binary=False) as db:
+    for i in range(10):
+        db[f"k{i}"] = f"{i}"
+
+    with db.transaction() as tx1:
+        db['k1'] = '1-mod'
+
+        with db.transaction() as tx2:
+            db['k2'] = '2-mod'
+            tx2.rollback()
+
+    assert db['k1'] == '1-mod'
+    assert db['k2'] == '2'
 ```
 
 You can commit or roll-back transactions part-way through a wrapped block:
 
 ```python
+from lsm import LSM
 
->>> with db.transaction() as txn:
-...    db['k1'] = 'outer txn'
-...    txn.commit()  # The write is preserved.
-...
-...    db['k1'] = 'outer txn-2'
-...    with db.transaction() as txn2:
-...        db['k1'] = 'inner-txn'  # This is commited after the block ends.
-...    print(db['k1']  # Prints "inner-txn".)
-...    txn.rollback()  # Rolls back both the changes from txn2 and the preceding write.
-...    print(db['k1'])
-...
-1              <- Return value from call to commit().
-inner-txn      <- Printed after end of txn2.
-True           <- Return value of call to rollback().
-outer txn      <- Printed after rollback.
+with LSM("/tmp/test_tx.ldb", binary=False) as db:
+    for i in range(10):
+        db[f"k{i}"] = f"{i}"
+
+    with db.transaction() as txn:
+        db['k1'] = 'outer txn'
+
+        # The write operation is preserved.
+        txn.commit()
+
+        db['k1'] = 'outer txn-2'
+
+        with db.transaction() as txn2:
+            # This is committed after the block ends.
+            db['k1'] = 'inner-txn'
+
+        assert db['k1'] == "inner-txn"
+
+        # Rolls back both the changes from txn2 and the preceding write.
+        txn.rollback()
+
+        assert db['k1'] == 'outer txn', db['k1']
 ```
+
 
 If you like, you can also explicitly call `LSM.begin()`, `LSM.commit()`, and
 `LSM.rollback()`.
 
 ```python
+from lsm import LSM
 
->>> db.begin()
->>> db['foo'] = 'baze'
->>> print(db['foo'])
-baze
->>> db.rollback()
-True
->>> print(db['foo'])
-bar
+with LSM("/tmp/test_db_tx.ldb", binary=False) as db:
+    db['foo'] = "bar"
+
+    db.begin()
+
+    db['foo'] = 'baz'
+    assert print(db['foo']) == 'baz'
+
+    db.rollback()
+
+    assert db['foo'] == 'bar'
 ```
+
 
 ### Thanks to
 

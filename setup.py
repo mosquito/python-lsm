@@ -132,7 +132,6 @@ setup(
         "Topic :: Database",
         "Topic :: Software Development :: Libraries",
         "Topic :: Software Development",
-        "Typing :: Typed",
     ],
     entry_points={
         "console_scripts": [
@@ -144,7 +143,6 @@ setup(
         "develop": [
             "pytest",
             "pytest-subtests",
-            "markdown-pytest",
         ],
     },
 )
