@@ -39,6 +39,7 @@ basic features and functionality of the ``lsm`` Python library.
 
 To begin, instantiate a `LSM` object, specifying a path to a database file.
 
+<!--  name: test_example_db -->
 ```python
 from lsm import LSM
 db = LSM('/tmp/test.ldb')
@@ -47,6 +48,7 @@ assert db.open()
 
 More pythonic variant is using context manager:
 
+<!--  name: test_example_db_context_manager -->
 ```python
 from lsm import LSM
 with LSM("/tmp/test.ldb") as db:
@@ -55,6 +57,7 @@ with LSM("/tmp/test.ldb") as db:
 
 Not opened database will raise a RuntimeError:
 
+<!--  name: test_example_db -->
 ```python
 import pytest
 from lsm import LSM
@@ -72,6 +75,7 @@ argument.
 
 For example when you want to store strings just pass ``binary=False``:
 
+<!--  name: test_binary_mode -->
 ```python
 from lsm import LSM
 with LSM("/tmp/test_0.ldb", binary=False) as db:
@@ -82,6 +86,7 @@ with LSM("/tmp/test_0.ldb", binary=False) as db:
 
 Otherwise, you must pass keys and values ad ``bytes`` (default behaviour):
 
+<!--  name: test_string_mode -->
 ```python
 from lsm import LSM
 
@@ -94,6 +99,7 @@ with LSM("/tmp/test.ldb") as db:
 
 ``lsm`` is a key/value store, and has a dictionary-like API:
 
+<!--  name: test_getitem -->
 ```python
 from lsm import LSM
 with LSM("/tmp/test.ldb", binary=False) as db:
@@ -103,6 +109,7 @@ with LSM("/tmp/test.ldb", binary=False) as db:
 
 Database apply changes as soon as possible:
 
+<!--  name: test_get_del_item -->
 ```python
 import pytest
 from lsm import LSM
@@ -123,6 +130,7 @@ By default, when you attempt to look up a key, ``lsm`` will search for an
 exact match. You can also search for the closest key, if the specific key you
 are searching for does not exist:
 
+<!--  name: test_get_del_item_seek_mode -->
 ```python
 import pytest
 from lsm import LSM, SEEK_LE, SEEK_GE, SEEK_LEFAST
@@ -162,10 +170,18 @@ the database the start and end keys need not exist -- ``lsm`` will find the
 closest key (details can be found in the [LSM.fetch_range()](https://lsm-db.readthedocs.io/en/latest/api.html#lsm.LSM.fetch_range)
 documentation).
 
+<!--
+    name: test_slices;
+-->
 ```python
 from lsm import LSM
 
 with LSM("/tmp/test_slices.ldb", binary=False) as db:
+
+    # clean database
+    for key in db.keys():
+        del db[key]
+
     db['foo'] = 'bar'
 
     for i in range(3):
@@ -190,10 +206,12 @@ You can use open-ended slices. If the lower- or upper-bound is outside the
 range of keys an empty list is returned.
 
 
+<!--
+    name: test_slices;
+    case: open_ended_slices
+-->
 ```python
-from lsm import LSM
-
-with LSM("/tmp/test_slices.ldb", binary=False) as db:
+with LSM("/tmp/test_slices.ldb", binary=False, readonly=True) as db:
     assert list(db['k0':]) == [('k0', '0'), ('k1', '1'), ('k2', '2')]
     assert list(db[:'k1']) == [('foo', 'bar'), ('k0', '0'), ('k1', '1')]
     assert list(db[:'aaa']) == []
@@ -204,23 +222,26 @@ simply use a third slice argument as usual.
 Negative step value means reverse order, but first and second arguments
 must be ordinarily ordered.
 
+<!--
+    name: test_slices;
+    case: reverse_slices
+-->
 ```python
-from lsm import LSM
-
-with LSM("/tmp/test_slices.ldb", binary=False) as db:
+with LSM("/tmp/test_slices.ldb", binary=False, readonly=True) as db:
     assert list(db['k0':'k99':2]) == [('k0', '0'), ('k2', '2')]
     assert list(db['k0'::-1]) == [('k2', '2'), ('k1', '1'), ('k0', '0')]
     assert list(db['k0'::-2]) == [('k2', '2'), ('k0', '0')]
     assert list(db['k0'::3]) == [('k0', '0')]
 ```
 
-You can also **delete** slices of keys, but note that the delete **will not**
+You can also **delete** slices of keys, but note that delete **will not**
 include the keys themselves:
 
+<!--
+    name: test_slices;
+    case: del_slice
+-->
 ```python
-
-from lsm import LSM
-
 with LSM("/tmp/test_slices.ldb", binary=False) as db:
     del db['k0':'k99']
 
@@ -233,6 +254,7 @@ with LSM("/tmp/test_slices.ldb", binary=False) as db:
 While slicing may cover most use-cases, for finer-grained control you can use
 cursors for traversing records.
 
+<!-- name: test_cursors -->
 ```python
 from lsm import LSM, SEEK_GE, SEEK_LE
 
@@ -298,17 +320,19 @@ ensures the cursor is closed properly.
 ### Transactions
 
 ``lsm`` supports nested transactions. The simplest way to use transactions
-is with the `LSM.transaction()` method, which doubles as a context-manager or
-decorator.
+is with the `LSM.transaction()` method, which returns a context-manager:
 
+<!-- name: test_transactions -->
 ```python
-
 from lsm import LSM
 
 with LSM("/tmp/test_tx.ldb", binary=False) as db:
+    del db["a":"z"]
     for i in range(10):
         db[f"k{i}"] = f"{i}"
 
+
+with LSM("/tmp/test_tx.ldb", binary=False) as db:
     with db.transaction() as tx1:
         db['k1'] = '1-mod'
 
@@ -322,13 +346,16 @@ with LSM("/tmp/test_tx.ldb", binary=False) as db:
 
 You can commit or roll-back transactions part-way through a wrapped block:
 
+<!-- name: test_transactions_2 -->
 ```python
 from lsm import LSM
 
-with LSM("/tmp/test_tx.ldb", binary=False) as db:
+with LSM("/tmp/test_tx_2.ldb", binary=False) as db:
+    del db["a":"z"]
     for i in range(10):
         db[f"k{i}"] = f"{i}"
 
+with LSM("/tmp/test_tx_2.ldb", binary=False) as db:
     with db.transaction() as txn:
         db['k1'] = 'outer txn'
 
@@ -353,22 +380,34 @@ with LSM("/tmp/test_tx.ldb", binary=False) as db:
 If you like, you can also explicitly call `LSM.begin()`, `LSM.commit()`, and
 `LSM.rollback()`.
 
+<!-- name: test_transactions_db -->
 ```python
 from lsm import LSM
 
+# fill db
 with LSM("/tmp/test_db_tx.ldb", binary=False) as db:
-    db['foo'] = "bar"
+    del db["k":"z"]
+    for i in range(10):
+        db[f"k{i}"] = f"{i}"
 
+
+with LSM("/tmp/test_db_tx.ldb", binary=False) as db:
+    # start transaction
     db.begin()
+    db['k1'] = '1-mod'
 
-    db['foo'] = 'baz'
-    assert print(db['foo']) == 'baz'
-
+    # nested transaction
+    db.begin()
+    db['k2'] = '2-mod'
+    # rolling back nested transaction
     db.rollback()
 
-    assert db['foo'] == 'bar'
-```
+    # comitting top-level transaction
+    db.commit()
 
+    assert db['k1'] == '1-mod'
+    assert db['k2'] == '2'
+```
 
 ### Thanks to
 

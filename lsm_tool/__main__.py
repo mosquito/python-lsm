@@ -38,7 +38,7 @@ def main():
              "otherwise merge keys and values from the source"
     )
     parser.add_argument(
-        "--dest-page-size", choices=list(1024 << i for i in range(7)),
+        "--dest-page-size", choices=list(str(1024 << i) for i in range(7)),
         help="Destination file page_size"
     )
 

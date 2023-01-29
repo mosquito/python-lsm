@@ -138,11 +138,12 @@ setup(
             "lsm-tool = lsm_tool.__main__:main"
         ]
     },
-    python_requires=">=3.7.*, <4",
+    python_requires=">=3.6,<4",
     extras_require={
         "develop": [
             "pytest",
             "pytest-subtests",
+            "markdown-pytest>=0.3.0",
         ],
     },
 )

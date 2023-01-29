@@ -18,6 +18,7 @@ SEEK_LEFAST: int
 
 
 class Transaction:
+    level: int
     def __enter__(self) -> "Transaction": ...
     def __exit__(self, exc_type, exc_val, exc_tb) -> None: ...
     def commit(self) -> bool: ...
@@ -63,6 +64,7 @@ class LSM:
     readonly: bool
     compress: str
     compress_level: int
+    tx_level: int
 
     def __init__(
         self, path: Any, *,
