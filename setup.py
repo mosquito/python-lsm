@@ -91,6 +91,11 @@ setup(
         Extension(
             "lsm",
             library_sources(),
+            include_dirs=[
+                "src/sqlite/ext/lsm1",
+                "src/zstd/lib",
+                "src/lz4/lib",
+            ],
             undef_macros=["NDEBUG"],
             define_macros=define_macros,
             libraries=libraries,

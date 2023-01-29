@@ -6,7 +6,7 @@ include src/sqlite/LICENSE.md
 
 recursive-include src/lz4/lib *.c *.h
 recursive-include src/zstd/lib *.c *.h
-recursive-include src/sqllite/ext/lsm1 *.c *.h
+recursive-include src/sqlite/ext/lsm1 *.c *.h
 
 # Add library interface
 include lsm/lsm.pyi
