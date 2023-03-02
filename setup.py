@@ -86,7 +86,7 @@ def library_sources():
 
 setup(
     name=module_name,
-    version="0.5.1",
+    version="0.5.2",
     ext_modules=[
         Extension(
             "lsm",
@@ -137,6 +137,7 @@ setup(
         "Topic :: Database",
         "Topic :: Software Development :: Libraries",
         "Topic :: Software Development",
+        "Typing :: Typed",
     ],
     entry_points={
         "console_scripts": [
