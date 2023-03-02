@@ -16,14 +16,6 @@
 #define LZ4_COMP_LEVEL_DEFAULT 16
 #define LZ4_COMP_LEVEL_MAX 16
 
-#ifdef NDEBUG
-#define print_refcount(obj) printf( \
-		"\e[1;33;4;44mprint_refcount(\"%s\") -> refcount=%d [%s:%d]\e[0m\n", \
-		obj->ob_base.ob_type->tp_name, \
-		obj->ob_base.ob_refcnt, \
-		__FILE__, __LINE__)
-#endif
-
 typedef struct {
 	PyObject_HEAD
 	char         *path;
@@ -333,6 +325,13 @@ static int pylsm_getitem(
 		lsm_csr_close(cursor);
 		return -1;
 	}
+
+	if (seek_mode == LSM_SEEK_LEFAST) {
+		*pnVal = 0;
+		lsm_csr_close(cursor);
+		return rc;
+	}
+
 	if ((rc = lsm_csr_value(cursor, (const void **)&pValue, &nValue))) {
 		lsm_csr_close(cursor);
 		return rc;
@@ -1027,6 +1026,7 @@ static PyObject* LSM_new(PyTypeObject *type, PyObject *args, PyObject *kwds) {
 
 static int _LSM_close(LSM* self) {
 	int result;
+
 	Py_BEGIN_ALLOW_THREADS;
 	LSM_MutexLock(self);
 	result = lsm_close(self->lsm);
@@ -1413,8 +1413,21 @@ static PyObject* LSM_ctx_enter(LSM *self) {
 }
 
 
-static PyObject* LSM_ctx_exit(LSM *self) {
+static PyObject* LSM_commit_inner(LSM *self, int tx_level);
+static PyObject* LSM_rollback_inner(LSM *self, int tx_level);
+
+
+static PyObject* LSM_ctx_exit(LSM *self, PyObject* args) {
 	if (self->state == PY_LSM_CLOSED) { Py_RETURN_NONE; };
+
+	PyObject *exc_type, *exc_value, *exc_tb;
+    if (!PyArg_ParseTuple(args, "OOO", &exc_type, &exc_value, &exc_tb)) return NULL;
+	if (exc_type == Py_None) {
+		if (self->tx_level > 0) LSM_commit_inner(self, 0);
+	} else {
+		if (self->tx_level > 0) LSM_rollback_inner(self, 0);
+	}
+
 	if (pylsm_error(_LSM_close(self))) return NULL;
 	Py_RETURN_NONE;
 }
@@ -1605,37 +1618,65 @@ static PyObject* LSM_delete_range(LSM *self, PyObject *args, PyObject *kwds) {
 
 static PyObject* LSM_begin(LSM *self) {
 	if (pylsm_ensure_writable(self)) return NULL;
+	if (self->tx_level < 0) self->tx_level = 0;
 
 	int level = self->tx_level + 1;
-
 	int result;
+
 	Py_BEGIN_ALLOW_THREADS
-	LSM_MutexLock(self);
 	result = lsm_begin(self->lsm, level);
-	LSM_MutexLeave(self);
 	Py_END_ALLOW_THREADS
 
 	if (pylsm_error(result)) return NULL;
+
 	self->tx_level = level;
+
 	Py_RETURN_TRUE;
 }
 
 
-static PyObject* LSM_commit(LSM *self) {
+static PyObject* LSM_commit_inner(LSM *self, int tx_level) {
 	if (pylsm_ensure_writable(self)) return NULL;
-
-	self->tx_level--;
+	if (tx_level < 0) tx_level = 0;
 
 	int result;
 	Py_BEGIN_ALLOW_THREADS
 	LSM_MutexLock(self);
-	result = lsm_commit(self->lsm, self->tx_level);
+	result = lsm_commit(self->lsm, tx_level);
 	LSM_MutexLeave(self);
 	Py_END_ALLOW_THREADS
 
 	if (pylsm_error(result)) return NULL;
-	if (self->tx_level < 0) self->tx_level = 0;
 	Py_RETURN_TRUE;
+}
+
+
+static PyObject* LSM_rollback_inner(LSM *self, int tx_level) {
+	if (pylsm_ensure_writable(self)) return NULL;
+	if (tx_level < 0) tx_level = 0;
+
+	int result;
+	Py_BEGIN_ALLOW_THREADS
+	LSM_MutexLock(self);
+	result = lsm_rollback(self->lsm, tx_level);
+	LSM_MutexLeave(self);
+	Py_END_ALLOW_THREADS
+
+	if (pylsm_error(result)) return NULL;
+	Py_RETURN_TRUE;
+}
+
+
+
+static PyObject* LSM_commit(LSM *self) {
+	if (self->tx_level < 0) self->tx_level = 0;
+	return LSM_commit_inner(self, self->tx_level);
+}
+
+
+static PyObject* LSM_rollback(LSM *self) {
+	if (self->tx_level < 0) self->tx_level = 0;
+	return LSM_rollback_inner(self, self->tx_level);
 }
 
 
@@ -1718,6 +1759,7 @@ static PyObject* LSM_getitem(LSM *self, PyObject *arg) {
 		if (pValue != NULL) free(pValue);
 		return NULL;
 	}
+	if (pValue == NULL) Py_RETURN_TRUE;
 
 	if (pylsm_error(result)) {
 		if (pValue != NULL) free(pValue);
@@ -1865,23 +1907,6 @@ static int LSM_contains(LSM *self, PyObject *key) {
 
 	pylsm_error(rc);
 	return -1;
-}
-
-
-static PyObject* LSM_rollback(LSM *self) {
-	if (pylsm_ensure_writable(self)) return NULL;
-
-	int result;
-	Py_BEGIN_ALLOW_THREADS
-	LSM_MutexLock(self);
-	result = lsm_rollback(self->lsm, self->tx_level);
-	LSM_MutexLeave(self);
-	Py_END_ALLOW_THREADS
-
-	self->tx_level--;
-	if (pylsm_error(result)) return NULL;
-	if (self->tx_level < 0) self->tx_level = 0;
-	Py_RETURN_TRUE;
 }
 
 
@@ -2088,11 +2113,6 @@ static LSMTransaction* LSM_transaction(LSM* self) {
 	if (PyErr_Occurred()) return NULL;
 
 	LSMTransaction* tx = (LSMTransaction*) LSMTransaction_new(&LSMTransactionType, self);
-	tx->tx_level = self->tx_level;
-	tx->db = self;
-
-	Py_INCREF(tx->db);
-
 	if (PyErr_Occurred()) return NULL;
 
 	return tx;
@@ -2211,6 +2231,13 @@ static PyMemberDef LSM_members[] = {
 		offsetof(LSM, compress_level),
 		READONLY,
 		"compress_level"
+	},
+	{
+		"tx_level",
+		T_INT,
+		offsetof(LSM, tx_level),
+		READONLY,
+		"Transaction nesting level"
 	},
 	{NULL}  /* Sentinel */
 };
@@ -2507,11 +2534,6 @@ static PyObject* LSMCursor_seek(LSMCursor *self, PyObject* args, PyObject* kwds)
 
 
 static PyObject* LSMCursor_compare(LSMCursor *self, PyObject* args, PyObject* kwds) {
-	if (self->state == PY_LSM_ITERATING) {
-		PyErr_SetString(PyExc_RuntimeError, "can not change cursor during iteration");
-		return NULL;
-	}
-
 	if (pylsm_ensure_csr_opened(self)) return NULL;
 	static char *kwlist[] = {"key", NULL};
 
@@ -2533,6 +2555,8 @@ static PyObject* LSMCursor_compare(LSMCursor *self, PyObject* args, PyObject* kw
 	LSM_MutexLock(self->db);
 	result = lsm_csr_cmp(self->cursor, pKey, (int) nKey, &cmp_result);
 	LSM_MutexLeave(self->db);
+
+	if (self->seek_mode == LSM_SEEK_GE) cmp_result = -cmp_result;
 
 	if (pylsm_error(result)) return NULL;
 	return Py_BuildValue("i", cmp_result);
@@ -2824,8 +2848,9 @@ static PyObject* LSMTransaction_new(PyTypeObject *type, LSM* db) {
 
 	self = (LSMTransaction *) type->tp_alloc(type, 0);
 	self->state = PY_LSM_INITIALIZED;
-
 	self->db = db;
+	self->tx_level = self->db->tx_level;
+
 	Py_INCREF(self->db);
 
 	return (PyObject *) self;
@@ -2833,9 +2858,13 @@ static PyObject* LSMTransaction_new(PyTypeObject *type, LSM* db) {
 
 
 static void LSMTransaction_dealloc(LSMTransaction *self) {
-	if (self->state == PY_LSM_CLOSED) return;
-	if (self->db != NULL) Py_DECREF(self->db);
 	if (self->weakrefs != NULL) PyObject_ClearWeakRefs((PyObject *) self);
+	if (self->db == NULL) return;
+
+	Py_DECREF(self->db);
+	if (self->state != PY_LSM_CLOSED && self->db->state != PY_LSM_CLOSED) {
+		LSM_rollback_inner(self->db, self->tx_level);
+	}
 }
 
 
@@ -2845,22 +2874,24 @@ static PyObject* LSMTransaction_ctx_enter(LSMTransaction *self) {
 }
 
 
+static PyObject* LSMTransaction_commit(LSMTransaction *self);
+static PyObject* LSMTransaction_rollback(LSMTransaction *self);
+
+
 static PyObject* LSMTransaction_ctx_exit(
-	LSMTransaction *self,
-	PyObject *exc_type,
-	PyObject *exc_value,
-	PyObject *exc_tb
+	LSMTransaction *self, PyObject *const *args
 ) {
 	if (self->state == PY_LSM_CLOSED) Py_RETURN_NONE;
 
+	PyObject *exc_type, *exc_value, *exc_tb;
+    if (!PyArg_ParseTuple(args, "OOO", &exc_type, &exc_value, &exc_tb)) return NULL;
+
 	self->state = PY_LSM_CLOSED;
 
-	if (self->tx_level != self->db->tx_level) Py_RETURN_NONE;
-
-	if (exc_type != Py_None) {
-		LSM_rollback(self->db);
+	if (exc_type == Py_None) {
+		LSM_commit_inner(self->db, self->tx_level - 1);
 	} else {
-		LSM_commit(self->db);
+		LSM_rollback_inner(self->db, self->tx_level);
 	}
 
 	if (PyErr_Occurred()) return NULL;
@@ -2870,15 +2901,29 @@ static PyObject* LSMTransaction_ctx_exit(
 
 
 static PyObject* LSMTransaction_commit(LSMTransaction *self) {
-	self->state = PY_LSM_CLOSED;
-	return LSM_commit(self->db);
+	PyObject * result = LSM_commit_inner(self->db, self->tx_level -1);
+	if (PyErr_Occurred()) return NULL;
+	if (pylsm_error(lsm_begin(self->db->lsm, self->tx_level))) return NULL;
+	return result;
 }
 
 
 static PyObject* LSMTransaction_rollback(LSMTransaction *self) {
-	self->state = PY_LSM_CLOSED;
-	return LSM_rollback(self->db);
+	return LSM_rollback_inner(self->db, self->tx_level);
 }
+
+
+
+static PyMemberDef LSMTransaction_members[] = {
+	{
+		"level",
+		T_INT,
+		offsetof(LSMTransaction, tx_level),
+		READONLY,
+		"Transaction level"
+	},
+	{NULL}  /* Sentinel */
+};
 
 
 static PyMethodDef LSMTransaction_methods[] = {
@@ -2889,7 +2934,7 @@ static PyMethodDef LSMTransaction_methods[] = {
 	},
 	{
 		"__exit__",
-		(PyCFunction) LSMTransaction_ctx_exit, METH_VARARGS | METH_KEYWORDS,
+		(PyCFunction) LSMTransaction_ctx_exit, METH_VARARGS,
 		"Exit context"
 	},
 	{
@@ -2915,6 +2960,7 @@ static PyTypeObject LSMTransactionType = {
 	.tp_flags = Py_TPFLAGS_DEFAULT,
 	.tp_dealloc = (destructor) LSMTransaction_dealloc,
 	.tp_methods = LSMTransaction_methods,
+	.tp_members = LSMTransaction_members,
 	.tp_weaklistoffset = offsetof(LSMTransaction, weakrefs)
 };
 

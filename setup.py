@@ -86,7 +86,7 @@ def library_sources():
 
 setup(
     name=module_name,
-    version="0.4.9",
+    version="0.5.0",
     ext_modules=[
         Extension(
             "lsm",
@@ -140,14 +140,15 @@ setup(
     ],
     entry_points={
         "console_scripts": [
-            "lsm-tool = lsm_tool:main"
+            "lsm-tool = lsm_tool.__main__:main"
         ]
     },
-    python_requires=">=3.7.*, <4",
+    python_requires=">=3.6,<4",
     extras_require={
         "develop": [
             "pytest",
             "pytest-subtests",
+            "markdown-pytest>=0.3.0",
         ],
     },
 )

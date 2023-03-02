@@ -100,27 +100,21 @@ class TestLSMSliceDeallocCtx(DeallocCases):
 class TestLSMCursorDeallocCtx(DeallocCases):
     @pytest.fixture(params=comp_algo)
     def instance_maker(self, request, tmp_path) -> Any:
-        def maker():
-            db = lsm.LSM(
-                tmp_path / ("db.lsm." + request.param),
-                compress=request.param
-            )
-            db.open()
-            return db.cursor()
-        return maker
+        with lsm.LSM(
+            tmp_path / ("db.lsm." + request.param),
+            compress=request.param
+        ) as db:
+            yield db.cursor
 
 
 class TestLSMTransactionDeallocCtx(DeallocCases):
     @pytest.fixture(params=comp_algo)
     def instance_maker(self, request, tmp_path) -> Any:
-        def maker():
-            db = lsm.LSM(
-                tmp_path / ("db.lsm." + request.param),
-                compress=request.param
-            )
-            db.open()
-            return db.transaction()
-        return maker
+        with lsm.LSM(
+            tmp_path / ("db.lsm." + request.param),
+            compress=request.param
+        ) as db:
+            yield db.transaction
 
 
 @pytest.fixture(params=[1, 10, 25, 50, 100, 256, 1024, 2048])
