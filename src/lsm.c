@@ -106,7 +106,7 @@ static PyTypeObject LSMSliceType;
 static PyTypeObject LSMTransactionType;
 
 
-static PyObject* LSMCursor_new(PyTypeObject*, LSM*);
+static PyObject* LSMCursor_new(PyTypeObject*, LSM*, int);
 static PyObject* LSMTransaction_new(PyTypeObject *type, LSM*);
 
 
@@ -404,11 +404,20 @@ static int pylsm_ensure_writable(LSM* self) {
 }
 
 static int pylsm_ensure_csr_opened(LSMCursor* self) {
-	if (self->state == PY_LSM_OPENED || self->state == PY_LSM_ITERATING) return 0;
 	if (pylsm_ensure_opened(self->db)) return 0;
 
-	PyErr_SetString(PyExc_RuntimeError, "Cursor closed");
-	return -1;
+	switch (self->state) {
+		case PY_LSM_OPENED:
+		case PY_LSM_ITERATING:
+			if (!lsm_csr_valid(self->cursor)) {
+				PyErr_SetString(PyExc_RuntimeError, "Invalid cursor");
+				return -1;
+			}
+			return 0;
+		default:
+			PyErr_SetString(PyExc_RuntimeError, "Cursor closed");
+			return -1;
+	}
 }
 
 
@@ -1501,7 +1510,13 @@ static PyObject* LSM_checkpoint(LSM *self) {
 static PyObject* LSM_cursor(LSM *self, PyObject *args, PyObject *kwds) {
 	if (pylsm_ensure_opened(self)) return NULL;
 
-	LSMCursor* cursor = (LSMCursor*) LSMCursor_new(&LSMCursorType, self);
+	int seek_mode = LSM_SEEK_GE;
+	static char *kwlist[] = {"seek_mode", NULL};
+
+	if (!PyArg_ParseTupleAndKeywords(args, kwds, "|i", kwlist, &seek_mode)) return NULL;
+	if (pylsm_seek_mode_check(seek_mode)) return NULL;
+
+	LSMCursor* cursor = (LSMCursor*) LSMCursor_new(&LSMCursorType, self, seek_mode);
 	if (cursor == NULL) return NULL;
 
 	return (PyObject*) cursor;
@@ -2286,7 +2301,7 @@ static PyMethodDef LSM_methods[] = {
 	},
 	{
 		"cursor",
-		(PyCFunction) LSM_cursor, METH_NOARGS,
+		(PyCFunction) LSM_cursor, METH_VARARGS | METH_KEYWORDS,
 		"Create a cursor"
 	},
 	{
@@ -2396,13 +2411,16 @@ static PyTypeObject LSMType = {
 };
 
 
-static PyObject* LSMCursor_new(PyTypeObject *type, LSM *db) {
+static PyObject* LSMCursor_new(PyTypeObject *type, LSM *db, int seek_mode) {
 	if (pylsm_ensure_opened(db)) return NULL;
+
 	LSMCursor *self;
 
 	self = (LSMCursor *) type->tp_alloc(type, 0);
 	self->state = PY_LSM_INITIALIZED;
 	self->db = db;
+
+	self->seek_mode = seek_mode;
 
 	int rc;
 
@@ -2411,6 +2429,15 @@ static PyObject* LSMCursor_new(PyTypeObject *type, LSM *db) {
 	LSM_MutexLeave(db);
 
 	if(pylsm_error(rc)) return NULL;
+
+	Py_BEGIN_ALLOW_THREADS
+	LSM_MutexLock(self->db);
+	rc = lsm_csr_first(self->cursor);
+	LSM_MutexLeave(self->db);
+	Py_END_ALLOW_THREADS
+
+	if (pylsm_error(rc)) return NULL;
+
 	self->state = PY_LSM_OPENED;
 
 	Py_INCREF(self->db);
@@ -2444,8 +2471,6 @@ static PyObject* LSMCursor_first(LSMCursor *self) {
 	if (pylsm_ensure_csr_opened(self)) return NULL;
 	int result;
 
-	self->seek_mode = LSM_SEEK_LEFAST;
-
 	Py_BEGIN_ALLOW_THREADS
 	LSM_MutexLock(self->db);
 	result = lsm_csr_first(self->cursor);
@@ -2454,6 +2479,8 @@ static PyObject* LSMCursor_first(LSMCursor *self) {
 
 	if (pylsm_error(result)) return NULL;
 	self->state = PY_LSM_OPENED;
+
+	if (!lsm_csr_valid(self->cursor)) Py_RETURN_FALSE;
 
 	Py_RETURN_TRUE;
 }
@@ -2467,8 +2494,6 @@ static PyObject* LSMCursor_last(LSMCursor *self) {
 	if (pylsm_ensure_csr_opened(self)) return NULL;
 	int result;
 
-	self->seek_mode = LSM_SEEK_LEFAST;
-
 	Py_BEGIN_ALLOW_THREADS
 	LSM_MutexLock(self->db);
 	result = lsm_csr_last(self->cursor);
@@ -2477,6 +2502,9 @@ static PyObject* LSMCursor_last(LSMCursor *self) {
 
 	if (pylsm_error(result)) return NULL;
 	self->state = PY_LSM_OPENED;
+
+	if (!lsm_csr_valid(self->cursor)) Py_RETURN_FALSE;
+
 	Py_RETURN_TRUE;
 }
 
@@ -2511,7 +2539,7 @@ static PyObject* LSMCursor_seek(LSMCursor *self, PyObject* args, PyObject* kwds)
 	const char* pKey = NULL;
 	Py_ssize_t nKey = 0;
 
-	if (!PyArg_ParseTupleAndKeywords(args, kwds, "O|I", kwlist, &key, &self->seek_mode)) return NULL;
+	if (!PyArg_ParseTupleAndKeywords(args, kwds, "O|i", kwlist, &key, &self->seek_mode)) return NULL;
 	if (pylsm_seek_mode_check(self->seek_mode)) return NULL;
 
 	int rc;
@@ -2535,6 +2563,12 @@ static PyObject* LSMCursor_seek(LSMCursor *self, PyObject* args, PyObject* kwds)
 
 static PyObject* LSMCursor_compare(LSMCursor *self, PyObject* args, PyObject* kwds) {
 	if (pylsm_ensure_csr_opened(self)) return NULL;
+
+	if (!lsm_csr_valid(self->cursor)) {
+		PyErr_SetString(PyExc_RuntimeError, "Invalid cursor");
+		return NULL;
+	};
+
 	static char *kwlist[] = {"key", NULL};
 
 	PyObject * key = NULL;
@@ -2686,62 +2720,6 @@ static PyObject* LSMCursor_repr(LSMCursor *self) {
 }
 
 
-static PyObject* LSMCursor_iter(LSMCursor* self) {
-	if (self->state == PY_LSM_ITERATING) {
-		PyErr_SetString(PyExc_RuntimeError, "can not start iteration during iteration");
-		return NULL;
-	}
-	if (pylsm_ensure_csr_opened(self)) return NULL;
-
-	if (!lsm_csr_valid(self->cursor)) {
-		int rc;
-		Py_BEGIN_ALLOW_THREADS
-		LSM_MutexLock(self->db);
-		rc = lsm_csr_first(self->cursor);
-		LSM_MutexLeave(self->db);
-		Py_END_ALLOW_THREADS
-
-		if (pylsm_error(rc)) return NULL;
-	}
-
-	self->state = PY_LSM_ITERATING;
-	Py_INCREF(self);
-	return (PyObject*) self;
-}
-
-
-static PyObject* LSMCursor_iter_next(LSMCursor* self) {
-	if (self->state != PY_LSM_ITERATING) {
-		PyErr_SetString(PyExc_RuntimeError, "call iter() first");
-		return NULL;
-	}
-	if (pylsm_ensure_csr_opened(self)) return NULL;
-
-	if (!lsm_csr_valid(self->cursor)) {
-		self->state = PY_LSM_OPENED;
-		PyErr_SetNone(PyExc_StopIteration);
-		return NULL;
-	}
-
-	LSM_MutexLock(self->db);
-
-	PyObject* result = pylsm_cursor_items_fetch(self->cursor, self->db->binary);
-	if (result == NULL) {
-		LSM_MutexLeave(self->db);
-		return NULL;
-	}
-
-	int err;
-	Py_BEGIN_ALLOW_THREADS
-	err = lsm_csr_next(self->cursor);
-	Py_END_ALLOW_THREADS
-	LSM_MutexLeave(self->db);
-
-	if (pylsm_error(err)) return NULL;
-	return result;
-}
-
-
 static PyMemberDef LSMCursor_members[] = {
 	{
 		"state",
@@ -2837,8 +2815,6 @@ static PyTypeObject LSMCursorType = {
 	.tp_members = LSMCursor_members,
 	.tp_methods = LSMCursor_methods,
 	.tp_repr = (reprfunc) LSMCursor_repr,
-	.tp_iter = (getiterfunc) LSMCursor_iter,
-	.tp_iternext = (iternextfunc) LSMCursor_iter_next,
 	.tp_weaklistoffset = offsetof(LSMCursor, weakrefs)
 };
 

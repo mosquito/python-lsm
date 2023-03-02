@@ -254,18 +254,33 @@ with LSM("test_slices.ldb", binary=False) as db:
 While slicing may cover most use-cases, for finer-grained control you can use
 cursors for traversing records.
 
-<!-- name: test_cursors -->
+<!--
+    name: test_cursors;
+    case: iterate_over_one_item
+-->
 ```python
 from lsm import LSM, SEEK_GE, SEEK_LE
 
 with LSM("test_cursors.ldb", binary=False) as db:
     del db["a":"z"]
+
     db["spam"] = "spam"
 
     with db.cursor() as cursor:
-        for key, value in cursor:
-            assert key ==  value
+        cursor.seek('spam')
+        key, value = cursor.retrieve()
+        assert key == 'spam'
+        assert value == 'spam'
+```
 
+Seeking over cursors:
+
+<!--
+    name: test_cursors;
+    case: iterate_over_multiple_items
+-->
+```python
+with LSM("test_cursors.ldb", binary=False) as db:
     db.update({'k0': '0', 'k1': '1', 'k2': '2', 'k3': '3', 'foo': 'bar'})
 
     with db.cursor() as cursor:
@@ -285,8 +300,17 @@ with LSM("test_cursors.ldb", binary=False) as db:
         assert key == "k3"
         assert value == "3"
 
-    # Finding the first match that is greater than or equal to 'k0'
-    # and move forward until the key is less than 'k99'
+```
+
+Finding the first match that is greater than or equal to `'k0'` and move
+forward until the key is less than `'k99'`
+
+<!--
+    name: test_cursors;
+    case: iterate_ge_until_k99
+-->
+```python
+with LSM("test_cursors.ldb", binary=False) as db:
     with db.cursor() as cursor:
         cursor.seek("k0", SEEK_GE)
         results = []
@@ -298,14 +322,22 @@ with LSM("test_cursors.ldb", binary=False) as db:
 
     assert results == [('k0', '0'), ('k1', '1'), ('k2', '2'), ('k3', '3')]
 
-    # Finding the last match that is lower than or equal to 'k99'
-    # and move backward until the key is less than 'k0'
+```
+
+Finding the last match that is lower than or equal to `'k99'` and move
+backward until the key is less than `'k0'`
+
+<!--
+    name: test_cursors;
+    case: iterate_le_until_k0
+-->
+```python
+with LSM("test_cursors.ldb", binary=False) as db:
     with db.cursor() as cursor:
         cursor.seek("k99", SEEK_LE)
         results = []
 
         while cursor.compare("k0") >= 0:
-            print(cursor.retrieve())
             key, value = cursor.retrieve()
             results.append((key, value))
             cursor.previous()
