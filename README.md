@@ -42,7 +42,7 @@ To begin, instantiate a `LSM` object, specifying a path to a database file.
 <!--  name: test_example_db -->
 ```python
 from lsm import LSM
-db = LSM('/tmp/test.ldb')
+db = LSM('test.ldb')
 assert db.open()
 ```
 
@@ -51,7 +51,7 @@ More pythonic variant is using context manager:
 <!--  name: test_example_db_context_manager -->
 ```python
 from lsm import LSM
-with LSM("/tmp/test.ldb") as db:
+with LSM("test.ldb") as db:
     assert db.info()
 ```
 
@@ -62,7 +62,7 @@ Not opened database will raise a RuntimeError:
 import pytest
 from lsm import LSM
 
-db = LSM('/tmp/test.ldb')
+db = LSM('test.ldb')
 
 with pytest.raises(RuntimeError):
     db.info()
@@ -78,7 +78,7 @@ For example when you want to store strings just pass ``binary=False``:
 <!--  name: test_binary_mode -->
 ```python
 from lsm import LSM
-with LSM("/tmp/test_0.ldb", binary=False) as db:
+with LSM("test_0.ldb", binary=False) as db:
     # must be str for keys and values
     db['foo'] = 'bar'
     assert db['foo'] == "bar"
@@ -90,7 +90,7 @@ Otherwise, you must pass keys and values ad ``bytes`` (default behaviour):
 ```python
 from lsm import LSM
 
-with LSM("/tmp/test.ldb") as db:
+with LSM("test.ldb") as db:
     db[b'foo'] = b'bar'
     assert db[b'foo'] == b'bar'
 ```
@@ -102,7 +102,7 @@ with LSM("/tmp/test.ldb") as db:
 <!--  name: test_getitem -->
 ```python
 from lsm import LSM
-with LSM("/tmp/test.ldb", binary=False) as db:
+with LSM("test.ldb", binary=False) as db:
     db['foo'] = 'bar'
     assert db['foo'] == 'bar'
 ```
@@ -114,7 +114,7 @@ Database apply changes as soon as possible:
 import pytest
 from lsm import LSM
 
-with LSM("/tmp/test.ldb", binary=False) as db:
+with LSM("test.ldb", binary=False) as db:
     for i in range(4):
          db[f'k{i}'] = str(i)
 
@@ -136,7 +136,7 @@ import pytest
 from lsm import LSM, SEEK_LE, SEEK_GE, SEEK_LEFAST
 
 
-with LSM("/tmp/test.ldb", binary=False) as db:
+with LSM("test.ldb", binary=False) as db:
     for i in range(4):
         db[f'k{i}'] = str(i)
 
@@ -176,7 +176,7 @@ documentation).
 ```python
 from lsm import LSM
 
-with LSM("/tmp/test_slices.ldb", binary=False) as db:
+with LSM("test_slices.ldb", binary=False) as db:
 
     # clean database
     for key in db.keys():
@@ -211,7 +211,7 @@ range of keys an empty list is returned.
     case: open_ended_slices
 -->
 ```python
-with LSM("/tmp/test_slices.ldb", binary=False, readonly=True) as db:
+with LSM("test_slices.ldb", binary=False, readonly=True) as db:
     assert list(db['k0':]) == [('k0', '0'), ('k1', '1'), ('k2', '2')]
     assert list(db[:'k1']) == [('foo', 'bar'), ('k0', '0'), ('k1', '1')]
     assert list(db[:'aaa']) == []
@@ -227,7 +227,7 @@ must be ordinarily ordered.
     case: reverse_slices
 -->
 ```python
-with LSM("/tmp/test_slices.ldb", binary=False, readonly=True) as db:
+with LSM("test_slices.ldb", binary=False, readonly=True) as db:
     assert list(db['k0':'k99':2]) == [('k0', '0'), ('k2', '2')]
     assert list(db['k0'::-1]) == [('k2', '2'), ('k1', '1'), ('k0', '0')]
     assert list(db['k0'::-2]) == [('k2', '2'), ('k0', '0')]
@@ -242,7 +242,7 @@ include the keys themselves:
     case: del_slice
 -->
 ```python
-with LSM("/tmp/test_slices.ldb", binary=False) as db:
+with LSM("test_slices.ldb", binary=False) as db:
     del db['k0':'k99']
 
     # Note that 'k0' still exists.
@@ -258,7 +258,7 @@ cursors for traversing records.
 ```python
 from lsm import LSM, SEEK_GE, SEEK_LE
 
-with LSM("/tmp/test_cursors.ldb", binary=False) as db:
+with LSM("test_cursors.ldb", binary=False) as db:
     del db["a":"z"]
     db["spam"] = "spam"
 
@@ -326,13 +326,13 @@ is with the `LSM.transaction()` method, which returns a context-manager:
 ```python
 from lsm import LSM
 
-with LSM("/tmp/test_tx.ldb", binary=False) as db:
+with LSM("test_tx.ldb", binary=False) as db:
     del db["a":"z"]
     for i in range(10):
         db[f"k{i}"] = f"{i}"
 
 
-with LSM("/tmp/test_tx.ldb", binary=False) as db:
+with LSM("test_tx.ldb", binary=False) as db:
     with db.transaction() as tx1:
         db['k1'] = '1-mod'
 
@@ -350,12 +350,12 @@ You can commit or roll-back transactions part-way through a wrapped block:
 ```python
 from lsm import LSM
 
-with LSM("/tmp/test_tx_2.ldb", binary=False) as db:
+with LSM("test_tx_2.ldb", binary=False) as db:
     del db["a":"z"]
     for i in range(10):
         db[f"k{i}"] = f"{i}"
 
-with LSM("/tmp/test_tx_2.ldb", binary=False) as db:
+with LSM("test_tx_2.ldb", binary=False) as db:
     with db.transaction() as txn:
         db['k1'] = 'outer txn'
 
@@ -385,13 +385,13 @@ If you like, you can also explicitly call `LSM.begin()`, `LSM.commit()`, and
 from lsm import LSM
 
 # fill db
-with LSM("/tmp/test_db_tx.ldb", binary=False) as db:
+with LSM("test_db_tx.ldb", binary=False) as db:
     del db["k":"z"]
     for i in range(10):
         db[f"k{i}"] = f"{i}"
 
 
-with LSM("/tmp/test_db_tx.ldb", binary=False) as db:
+with LSM("test_db_tx.ldb", binary=False) as db:
     # start transaction
     db.begin()
     db['k1'] = '1-mod'
