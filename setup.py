@@ -116,7 +116,7 @@ setup(
         "Tracker": "https://github.com/mosquito/python-lsm/issues",
         "Say Thanks!": "https://saythanks.io/to/mosquito",
     },
-    packages=['', 'lsm_tool'],
+    packages=[''],
     package_data={'': ["lsm.pyi"]},
     classifiers=[
         "Intended Audience :: Developers",
@@ -140,7 +140,7 @@ setup(
     ],
     entry_points={
         "console_scripts": [
-            "lsm-tool = lsm_tool.__main__:main"
+            "lsm-tool = lsm_tool:main"
         ]
     },
     python_requires=">=3.6,<4",
