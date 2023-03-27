@@ -249,7 +249,7 @@ static void pylsm_logger(LSM* self, int rc, const char * message) {
 
 	PyGILState_STATE state = PyGILState_Ensure();
 	PyObject_CallFunction(self->logger, "sI", message, rc);
-	PyErr_Print();
+	if (PyErr_Occurred()) PyErr_Print();
 	PyGILState_Release(state);
 }
 
