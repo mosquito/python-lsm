@@ -2510,7 +2510,11 @@ static PyObject* LSMCursor_last(LSMCursor *self) {
 
 
 static PyObject* LSMCursor_close(LSMCursor *self) {
-	if (pylsm_ensure_csr_opened(self)) return NULL;
+	switch (self->state == PY_LSM_CLOSED) {
+		PyErr_SetString(PyExc_RuntimeError, "Cursor closed");
+		return NULL;
+	}
+
 	int result;
 	result = lsm_csr_close(self->cursor);
 
