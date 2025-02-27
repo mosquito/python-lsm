@@ -102,7 +102,7 @@ jobs:
           submodules: recursive
 
       - name: Building manylinux2014_x86_64 wheels
-        uses: docker://quay.io/pypa/manylinux_2_34
+        uses: docker://quay.io/pypa/manylinux_2_34_x86_64
         with:
           args: /bin/bash scripts/make-wheels.sh
 
