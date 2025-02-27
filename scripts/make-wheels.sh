@@ -3,6 +3,7 @@ set -ex
 mkdir -p dist
 
 function build_wheel() {
+  /opt/python/$1/bin/pip install setuptools wheel
 	/opt/python/$1/bin/pip wheel . -f . -w dist
 }
 
