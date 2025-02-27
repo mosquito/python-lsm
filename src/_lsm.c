@@ -2947,13 +2947,13 @@ static PyTypeObject LSMTransactionType = {
 
 static PyModuleDef lsm_module = {
 	PyModuleDef_HEAD_INIT,
-	.m_name = "lsm",
+	.m_name = "_lsm",
 	.m_doc = "LSM DB python binding",
 	.m_size = -1,
 };
 
 
-PyMODINIT_FUNC PyInit_lsm(void) {
+PyMODINIT_FUNC PyInit__lsm(void) {
 	PyObject *m;
 
 	m = PyModule_Create(&lsm_module);

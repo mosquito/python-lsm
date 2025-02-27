@@ -73,7 +73,7 @@ sources = {
         "common/pool.c",
         "common/threading.c",
     ],
-    "": ["lsm.c"]
+    "": ["_lsm.c"]
 }
 
 
@@ -89,7 +89,7 @@ setup(
     version="0.5.4",
     ext_modules=[
         Extension(
-            "lsm",
+            "lsm._lsm",
             library_sources(),
             include_dirs=[
                 "src/sqlite/ext/lsm1",
@@ -103,6 +103,7 @@ setup(
         ),
     ],
     include_package_data=True,
+    py_modules=['lsm_tool'],
     description="Python bindings for SQLite's LSM key/value engine",
     long_description=open("README.md").read(),
     long_description_content_type='text/markdown',
@@ -116,8 +117,8 @@ setup(
         "Tracker": "https://github.com/mosquito/python-lsm/issues",
         "Say Thanks!": "https://saythanks.io/to/mosquito",
     },
-    packages=[''],
-    package_data={'': ["lsm.pyi"]},
+    packages=["lsm"],
+    package_data={"lsm": ["py.typed", "_lsm.pyi"]},
     classifiers=[
         "Intended Audience :: Developers",
         "License :: OSI Approved :: Apache Software License",
@@ -126,11 +127,11 @@ setup(
         "Operating System :: Microsoft",
         "Operating System :: POSIX",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.7",
-        "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
+        "Programming Language :: Python :: 3.13",
         "Programming Language :: Python :: Implementation :: CPython",
         "Programming Language :: Python",
         "Topic :: Database :: Database Engines/Servers",
@@ -144,7 +145,7 @@ setup(
             "lsm-tool = lsm_tool:main"
         ]
     },
-    python_requires=">=3.6,<4",
+    python_requires=">=3.9,<4",
     extras_require={
         "develop": [
             "pytest",
