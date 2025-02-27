@@ -2859,7 +2859,7 @@ static PyObject* LSMTransaction_rollback(LSMTransaction *self);
 
 
 static PyObject* LSMTransaction_ctx_exit(
-	LSMTransaction *self, PyObject *const *args
+	LSMTransaction *self, PyObject *args
 ) {
 	if (self->state == PY_LSM_CLOSED) Py_RETURN_NONE;
 
