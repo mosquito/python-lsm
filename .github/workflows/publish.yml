@@ -22,7 +22,7 @@ jobs:
       - name: Setup python3.9
         uses: actions/setup-python@v2
         with:
-          python-version: "3.9"
+          python-version: "3.12"
 
       - name: Install requires
         run: python -m pip install twine wheel
@@ -102,7 +102,7 @@ jobs:
           submodules: recursive
 
       - name: Building manylinux2014_x86_64 wheels
-        uses: docker://quay.io/pypa/manylinux2014_x86_64
+        uses: docker://quay.io/pypa/manylinux_2_34
         with:
           args: /bin/bash scripts/make-wheels.sh
 
