@@ -73,7 +73,7 @@ sources = {
         "common/pool.c",
         "common/threading.c",
     ],
-    "": ["lsm.c"]
+    "": ["_lsm.c"]
 }
 
 
@@ -89,7 +89,7 @@ setup(
     version="0.5.4",
     ext_modules=[
         Extension(
-            "lsm",
+            "lsm._lsm",
             library_sources(),
             include_dirs=[
                 "src/sqlite/ext/lsm1",
@@ -117,7 +117,8 @@ setup(
         "Tracker": "https://github.com/mosquito/python-lsm/issues",
         "Say Thanks!": "https://saythanks.io/to/mosquito",
     },
-    data_files=[('', ["lsm.pyi"])],
+    packages=["lsm"],
+    package_data={"lsm": ["py.typed", "_lsm.pyi"]},
     classifiers=[
         "Intended Audience :: Developers",
         "License :: OSI Approved :: Apache Software License",
