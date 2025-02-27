@@ -29,27 +29,29 @@ jobs:
           - python: '3.11'
             toxenv: py311
             os: ubuntu-latest
-          - python: '3.7'
-            toxenv: py37
-            os: macos-latest
-          - python: '3.8'
-            toxenv: py38
-            os: macos-latest
+          - python: '3.12'
+            toxenv: py312
+            os: ubuntu-latest
+          - python: '3.13'
+            toxenv: py313
+            os: ubuntu-latest
+
           - python: '3.9'
             toxenv: py39
             os: macos-latest
           - python: '3.10'
             toxenv: py310
-            os: windows-latest
+            os: macos-latest
           - python: '3.11'
             toxenv: py311
-            os: windows-latest
-          - python: '3.7'
-            toxenv: py37
-            os: windows-latest
-          - python: '3.8'
-            toxenv: py38
-            os: windows-latest
+            os: macos-latest
+          - python: '3.12'
+            toxenv: py312
+            os: macos-latest
+          - python: '3.13'
+            toxenv: py313
+            os: macos-latest
+
           - python: '3.9'
             toxenv: py39
             os: windows-latest
