@@ -103,6 +103,7 @@ setup(
         ),
     ],
     include_package_data=True,
+    py_modules=['lsm_tool'],
     description="Python bindings for SQLite's LSM key/value engine",
     long_description=open("README.md").read(),
     long_description_content_type='text/markdown',
@@ -116,8 +117,7 @@ setup(
         "Tracker": "https://github.com/mosquito/python-lsm/issues",
         "Say Thanks!": "https://saythanks.io/to/mosquito",
     },
-    packages=[''],
-    package_data={'': ["lsm.pyi"]},
+    data_files=[('', ["lsm.pyi"])],
     classifiers=[
         "Intended Audience :: Developers",
         "License :: OSI Approved :: Apache Software License",
